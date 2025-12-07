@@ -1,0 +1,51 @@
+# =============================================================================
+# FSDP Configuration for Accelerate
+# Usage: accelerate launch --config_file configs/gpu/fsdp/accelerate_fsdp.yaml train.py
+# Recommended by HuggingFace for easier setup than DeepSpeed
+# =============================================================================
+
+compute_environment: LOCAL_MACHINE
+debug: false
+distributed_type: FSDP
+
+# FSDP Settings
+fsdp_config:
+  # Sharding strategy: FULL_SHARD (like ZeRO-3), SHARD_GRAD_OP (like ZeRO-2)
+  fsdp_sharding_strategy: FULL_SHARD
+  
+  # Auto wrap policy for transformer layers
+  fsdp_auto_wrap_policy: TRANSFORMER_BASED_WRAP
+  
+  # State dict type for checkpointing
+  fsdp_state_dict_type: SHARDED_STATE_DICT
+  
+  # CPU offloading (enable for very large models)
+  fsdp_offload_params: false
+  
+  # Backward prefetch for better throughput
+  fsdp_backward_prefetch: BACKWARD_PRE
+  
+  # Forward prefetch
+  fsdp_forward_prefetch: false
+  
+  # Use original parameters (for LoRA compatibility)
+  fsdp_use_orig_params: true
+  
+  # CPU RAM efficient loading
+  fsdp_cpu_ram_efficient_loading: true
+  
+  # Sync module states
+  fsdp_sync_module_states: true
+
+# Machine config
+machine_rank: 0
+main_training_function: main
+mixed_precision: bf16
+num_machines: 1
+num_processes: 4  # Number of GPUs
+rdzv_backend: static
+same_network: true
+tpu_env: []
+tpu_use_cluster: false
+tpu_use_sudo: false
+use_cpu: false

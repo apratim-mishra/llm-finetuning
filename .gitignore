@@ -1,0 +1,94 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv-*/
+venv/
+env/
+ENV/
+
+# MLX
+mlx_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Outputs and checkpoints
+outputs/
+checkpoints/
+runs/
+mlruns/
+wandb/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# Data files (optional - comment out if you want to track data)
+# data/raw/
+# data/processed/
+
+# Claude AI specific
+.claude/
+settings.local.json
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+.cache
+
+# Documentation builds
+docs/_build/
+
+# Backup files
+*.backup
+*.bak
+*~

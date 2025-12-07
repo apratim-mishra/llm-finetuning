@@ -1,0 +1,28 @@
+# =============================================================================
+# MLX Requirements - Mac Apple Silicon Development Environment
+# Install: pip install -r requirements-mlx.txt
+# =============================================================================
+
+-r requirements-base.txt
+
+# MLX Core Framework (Apple Silicon only)
+mlx>=0.12.0
+mlx-lm>=0.12.0
+
+# Transformers (CPU version for tokenizers and configs)
+transformers>=4.40.0
+
+# PEFT (for LoRA config compatibility with GPU code)
+peft>=0.10.0
+
+# Accelerate (CPU mode for config compatibility)
+accelerate>=0.28.0
+
+# TRL (for data formatting utilities - CPU mode)
+trl>=0.8.0
+
+# COMET for translation evaluation (optional - large download)
+# unbabel-comet>=2.2.0
+
+# Additional utilities
+safetensors>=0.4.0

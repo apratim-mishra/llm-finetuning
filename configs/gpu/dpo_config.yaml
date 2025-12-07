@@ -1,0 +1,85 @@
+# =============================================================================
+# GPU DPO Configuration - Math Reasoning Preference Learning (Use Case 3)
+# Framework: TRL DPOTrainer
+# Requires: SFT checkpoint as starting point
+# =============================================================================
+
+# Model Settings
+model:
+  # Use your SFT checkpoint
+  name: "outputs/gpu/checkpoints/math_sft/final"
+  # Or use base model if starting fresh:
+  # name: "Qwen/Qwen2.5-7B-Instruct"
+  torch_dtype: "bfloat16"
+  attn_implementation: "flash_attention_2"
+  device_map: "auto"
+
+# Reference Model (same as model, frozen)
+ref_model:
+  # Same as model - DPOTrainer handles this
+  name: null  # Will use same as model
+
+# Quantization
+quantization:
+  enabled: true
+  load_in_4bit: true
+  bnb_4bit_compute_dtype: "bfloat16"
+  bnb_4bit_quant_type: "nf4"
+
+# LoRA (continue from SFT or fresh)
+lora:
+  r: 64
+  lora_alpha: 128
+  lora_dropout: 0.05
+  target_modules: "all-linear"
+  bias: "none"
+
+# DPO Specific Settings
+dpo:
+  beta: 0.1                   # KL divergence weight (0.1-0.5)
+  loss_type: "sigmoid"        # sigmoid, hinge, ipo
+  label_smoothing: 0.0
+  
+# Training Arguments
+training:
+  output_dir: "outputs/gpu/checkpoints/math_dpo"
+  num_train_epochs: 1         # DPO typically needs fewer epochs
+  per_device_train_batch_size: 2
+  per_device_eval_batch_size: 2
+  gradient_accumulation_steps: 8    # Effective batch: 16
+  learning_rate: 5.0e-7       # Much lower than SFT!
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.1
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  
+  # Precision
+  bf16: true
+  gradient_checkpointing: true
+  
+  # Evaluation
+  eval_strategy: "steps"
+  eval_steps: 100
+  
+  # Logging
+  logging_steps: 10
+  report_to: "wandb"
+  
+  # Checkpointing
+  save_strategy: "steps"
+  save_steps: 100
+  save_total_limit: 3
+  
+  seed: 42
+
+# Data (preference pairs)
+data:
+  train_file: "data/processed/math/preference_pairs.jsonl"
+  val_file: "data/processed/math/preference_pairs_val.jsonl"
+  # Format: {"prompt": "...", "chosen": "...", "rejected": "..."}
+  
+# Wandb
+wandb:
+  project: "math-reasoning-gpu"
+  run_name: "qwen2.5-7b-dpo-math"
+  tags: ["dpo", "math", "preference"]

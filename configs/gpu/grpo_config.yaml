@@ -1,0 +1,83 @@
+# =============================================================================
+# GPU GRPO Configuration - Math Reasoning Online RL (Use Case 3)
+# Framework: TRL GRPOTrainer (newest, more stable than PPO)
+# Requires: DPO checkpoint as starting point
+# =============================================================================
+
+# Model Settings
+model:
+  # Use your DPO checkpoint
+  name: "outputs/gpu/checkpoints/math_dpo/final"
+  torch_dtype: "bfloat16"
+  attn_implementation: "flash_attention_2"
+  device_map: "auto"
+
+# Quantization
+quantization:
+  enabled: true
+  load_in_4bit: true
+  bnb_4bit_compute_dtype: "bfloat16"
+  bnb_4bit_quant_type: "nf4"
+
+# LoRA
+lora:
+  r: 64
+  lora_alpha: 128
+  lora_dropout: 0.05
+  target_modules: "all-linear"
+
+# GRPO Specific Settings
+grpo:
+  # KL divergence penalty
+  kl_coef: 0.05               # Lower = more exploration
+  
+  # Generation settings
+  num_generations: 4          # Samples per prompt for comparison
+  max_new_tokens: 512
+  temperature: 0.7
+  top_p: 0.9
+  
+  # Reward function: defined in src/rewards/math_reward.py
+  reward_function: "math_accuracy_reward"
+
+# Training Arguments
+training:
+  output_dir: "outputs/gpu/checkpoints/math_grpo"
+  num_train_epochs: 1
+  per_device_train_batch_size: 2
+  per_device_eval_batch_size: 2
+  gradient_accumulation_steps: 8
+  learning_rate: 1.0e-6       # Very low for RL
+  lr_scheduler_type: "constant"
+  warmup_ratio: 0.0
+  max_grad_norm: 0.5
+  
+  # Precision
+  bf16: true
+  gradient_checkpointing: true
+  
+  # Evaluation
+  eval_strategy: "steps"
+  eval_steps: 100
+  
+  # Logging
+  logging_steps: 5
+  report_to: "wandb"
+  
+  # Checkpointing
+  save_strategy: "steps"
+  save_steps: 100
+  save_total_limit: 3
+  
+  seed: 42
+
+# Data (prompts only - model generates completions)
+data:
+  train_file: "data/processed/math/grpo_prompts.jsonl"
+  # Format: {"prompt": "...", "answer": "..."}  # answer for reward computation
+
+# Wandb
+wandb:
+  project: "math-reasoning-gpu"
+  run_name: "qwen2.5-7b-grpo-math"
+  tags: ["grpo", "math", "rl", "online"]

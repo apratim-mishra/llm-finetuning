@@ -1,0 +1,57 @@
+# =============================================================================
+# MLX SFT Configuration - Math Reasoning (Use Case 3)
+# Model: Qwen2.5-7B-Instruct-4bit
+# Note: Only SFT possible on Mac; DPO/GRPO requires cloud GPU
+# =============================================================================
+
+# Model Settings
+model:
+  name: "mlx-community/Qwen2.5-7B-Instruct-4bit"
+  # Math-specific alternative (if available):
+  # name: "mlx-community/Qwen2.5-Math-7B-Instruct-4bit"
+  max_seq_length: 2048        # Math needs longer context for reasoning
+
+# LoRA Configuration
+lora:
+  rank: 64                    # Higher rank for reasoning tasks
+  alpha: 128
+  dropout: 0.05
+  layers: 16
+
+# Training Settings
+training:
+  iters: 2000                 # More iters for complex task
+  batch_size: 1               # Longer sequences = smaller batch
+  learning_rate: 1.0e-4       # Slightly higher for math
+  warmup_steps: 100
+  weight_decay: 0.01
+  grad_checkpoint: true
+
+# Validation
+validation:
+  val_batches: 50
+  eval_every: 200
+
+# Checkpointing
+checkpoint:
+  save_every: 500
+  output_dir: "outputs/mlx/adapters/math_reasoning"
+
+# Data Paths
+data:
+  train_file: "data/processed/math/sft_train.jsonl"
+  val_file: "data/processed/math/sft_val.jsonl"
+
+# Logging
+logging:
+  log_every: 20
+  wandb:
+    enabled: true
+    project: "math-reasoning-mlx"
+    run_name: "qwen2.5-7b-lora-math-sft"
+
+# Evaluation (Mac-specific)
+evaluation:
+  # Run GSM8K subset during validation
+  gsm8k_subset_size: 100
+  extract_answer_pattern: "Answer:\\s*([0-9.,]+)"

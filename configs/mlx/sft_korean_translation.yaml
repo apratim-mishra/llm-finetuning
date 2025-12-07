@@ -1,0 +1,52 @@
+# =============================================================================
+# MLX SFT Configuration - Korean-English Translation (Use Case 1)
+# Model: Qwen2.5-7B-Instruct-4bit (optimized for 24GB Mac)
+# =============================================================================
+
+# Model Settings
+model:
+  name: "mlx-community/Qwen2.5-7B-Instruct-4bit"
+  # Alternative smaller model for faster iteration:
+  # name: "mlx-community/Phi-3.5-mini-instruct-4bit"
+  max_seq_length: 1024
+  
+# LoRA Configuration
+lora:
+  rank: 32                    # Lower than GPU due to memory (GPU: 64)
+  alpha: 64                   # 2x rank
+  dropout: 0.05
+  layers: 16                  # Number of transformer layers to apply LoRA
+  # Target modules handled automatically by mlx-lm
+
+# Training Settings
+training:
+  iters: 1000                 # Validation run (GPU: 10000+)
+  batch_size: 2               # Memory limited (GPU: 8+)
+  learning_rate: 2.0e-5
+  warmup_steps: 50
+  weight_decay: 0.01
+  grad_checkpoint: true       # Essential for 24GB Mac
+  
+# Validation
+validation:
+  val_batches: 20
+  eval_every: 100             # Evaluate every N iterations
+
+# Checkpointing
+checkpoint:
+  save_every: 200
+  output_dir: "outputs/mlx/adapters/korean_translation"
+
+# Data Paths
+data:
+  train_file: "data/processed/korean_english/train.jsonl"
+  val_file: "data/processed/korean_english/val.jsonl"
+  test_file: "data/processed/korean_english/test.jsonl"
+
+# Logging
+logging:
+  log_every: 10
+  wandb:
+    enabled: true
+    project: "korean-translation-mlx"
+    run_name: "qwen2.5-7b-lora-korean"

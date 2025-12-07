@@ -1,0 +1,288 @@
+# =============================================================================
+# LLM Fine-tuning Pipeline - UV/pip Configuration
+# =============================================================================
+# Install with uv (recommended - 10-100x faster than pip):
+#   uv venv                        # Create virtual environment
+#   uv pip install -e ".[mlx]"     # Mac MLX environment
+#   uv pip install -e ".[gpu]"     # Cloud GPU environment
+#   uv pip install -e ".[dev]"     # Development (testing, linting)
+#   uv pip install -e ".[all]"     # Everything
+#
+# Or with pip:
+#   pip install -e ".[gpu]"
+#
+# UV commands:
+#   uv venv                        # Create virtual environment
+#   uv pip sync requirements.txt   # Sync from requirements file
+#   uv pip compile pyproject.toml  # Generate locked requirements
+# =============================================================================
+
+[project]
+name = "llm-finetuning"
+version = "0.1.0"
+description = "LLM Fine-tuning Pipeline: MLX (Mac) to Cloud GPU"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "LLM Fine-tuning Team" }
+]
+keywords = [
+    "llm",
+    "fine-tuning",
+    "mlx",
+    "transformers",
+    "trl",
+    "lora",
+    "qlora",
+    "dpo",
+    "grpo",
+    "rlhf",
+    "vllm",
+    "sglang",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# Base dependencies (shared across all environments)
+dependencies = [
+    # Data Processing
+    "datasets>=2.19.0",
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "pyarrow>=14.0.0",
+
+    # Tokenization
+    "tokenizers>=0.15.0",
+    "sentencepiece>=0.2.0",
+
+    # Evaluation Metrics
+    "sacrebleu>=2.4.0",
+    "evaluate>=0.4.0",
+    "rouge-score>=0.1.2",
+
+    # Utilities
+    "tqdm>=4.66.0",
+    "pyyaml>=6.0.0",
+    "python-dotenv>=1.0.0",
+    "click>=8.1.0",
+    "rich>=13.0.0",
+
+    # Experiment Tracking
+    "wandb>=0.16.0",
+    "mlflow>=2.10.0",
+    "tensorboard>=2.15.0",
+
+    # Hugging Face Hub
+    "huggingface-hub>=0.21.0",
+    "safetensors>=0.4.0",
+
+    # Korean NLP
+    "kiwipiepy>=0.16.0",
+]
+
+[project.optional-dependencies]
+# Mac MLX Environment
+mlx = [
+    "mlx>=0.12.0",
+    "mlx-lm>=0.12.0",
+    "transformers>=4.45.0",
+    "peft>=0.10.0",
+    "accelerate>=0.28.0",
+    "trl>=0.12.0",
+]
+
+# Cloud GPU Environment (NVIDIA CUDA)
+gpu = [
+    "torch>=2.2.0",
+    "transformers>=4.45.0",
+    "accelerate>=0.28.0",
+    "peft>=0.10.0",
+    "trl>=0.12.0",
+    "bitsandbytes>=0.43.0",
+    "deepspeed>=0.14.0",
+    "lm-eval>=0.4.0",
+    "vllm>=0.6.0",
+    "scipy>=1.11.0",
+]
+
+# SGLang for high-performance inference (RadixAttention)
+sglang = [
+    "sglang[all]>=0.2.0",
+]
+
+# HELM evaluation framework
+helm = [
+    "crfm-helm>=0.5.0",
+]
+
+# Wandb Weave for tracing and observability
+weave = [
+    "weave>=0.50.0",
+]
+
+# Development dependencies
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.3.0",
+    "black>=24.0.0",
+    "mypy>=1.8.0",
+    "pre-commit>=3.6.0",
+    "isort>=5.13.0",
+]
+
+# Jupyter/Notebook support
+notebook = [
+    "jupyterlab>=4.1.0",
+    "ipywidgets>=8.1.0",
+    "nbformat>=5.9.0",
+]
+
+# COMET for translation evaluation (large download)
+comet = [
+    "unbabel-comet>=2.2.0",
+]
+
+# Full evaluation suite
+eval = [
+    "unbabel-comet>=2.2.0",
+    "rouge-score>=0.1.2",
+    "lm-eval>=0.4.0",
+]
+
+# All dependencies (GPU environment with extras)
+all = [
+    "llm-finetuning[gpu,dev,notebook,weave,eval]",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-org/llm-finetuning"
+Documentation = "https://github.com/your-org/llm-finetuning#readme"
+Repository = "https://github.com/your-org/llm-finetuning"
+
+[project.scripts]
+# CLI entry points
+llm-train-sft = "scripts.gpu.train_sft:main"
+llm-train-dpo = "scripts.gpu.train_dpo:main"
+llm-train-grpo = "scripts.gpu.train_grpo:main"
+llm-infer-vllm = "scripts.gpu.inference_vllm:main"
+llm-infer-sglang = "scripts.gpu.inference_sglang:main"
+llm-eval = "scripts.gpu.evaluate_lm_harness:main"
+llm-eval-helm = "scripts.gpu.evaluate_helm:main"
+train-mlx = "scripts.mlx.train_sft:main"
+# prepare-data = "data.scripts.prepare_all:main"  # TODO: create prepare_all.py
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*", "scripts*", "data*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.yaml", "*.json"]
+
+# =============================================================================
+# Tool Configurations
+# =============================================================================
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "N",   # pep8-naming
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # function call in default arg
+    "C901",  # too complex
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src", "scripts"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311", "py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--tb=short",
+    "--cov=src",
+    "--cov-report=term-missing",
+    "--cov-report=html:outputs/coverage",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+]
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+omit = [
+    "tests/*",
+    "scripts/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+# =============================================================================
+# UV-specific configuration (for uv package manager)
+# =============================================================================
+[tool.uv]
+# UV resolver settings
+resolution = "highest"
+prerelease = "allow"
+
+# Index configuration for CUDA packages
+[[tool.uv.index]]
+name = "pytorch-cu121"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true
+
+# Override packages to use CUDA versions when installing GPU deps
+[tool.uv.sources]
+torch = { index = "pytorch-cu121" }
