@@ -6,10 +6,9 @@
 
 # Model Settings
 model:
-  # Use your SFT checkpoint
-  name: "outputs/gpu/checkpoints/math_sft/final"
-  # Or use base model if starting fresh:
-  # name: "Qwen/Qwen2.5-7B-Instruct"
+  # Base model + SFT adapter (DPO continues training from SFT)
+  name: "Qwen/Qwen2.5-7B-Instruct"
+  adapter: "outputs/gpu/checkpoints/math_sft/final"
   torch_dtype: "bfloat16"
   attn_implementation: "flash_attention_2"
   device_map: "auto"

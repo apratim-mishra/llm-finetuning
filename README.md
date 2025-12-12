@@ -14,7 +14,7 @@ A complete pipeline for fine-tuning LLMs, starting with local Mac (MLX) prototyp
 ```bash
 cp .env.example .env
 # Fill in HF_TOKEN (for gated models), WANDB_*, and MLflow if used
-# Add AWS/Lambda GPU keys if you plan to launch cloud instances (see Cloud GPU Credentials)
+# AWS/Lambda keys are optional and only for your own provisioning automation (see Cloud GPU Credentials)
 ```
 
 ### 1. Setup Project Structure
@@ -60,6 +60,50 @@ Use this when you just want to chat with a model or sanity-check prompts before 
 | Mac (MLX) | mlx-community/Qwen2.5-7B-Instruct-4bit, mlx-community/Llama-3.2-3B-Instruct | Runs in 4-bit, best for quick prompt tests |
 | Cloud GPU | Qwen/Qwen2.5-7B-Instruct, meta-llama/Llama-3.1-8B-Instruct | Use `--tensor-parallel` for multi-GPU vLLM |
 
+### MLX Inference (uv) - Step by Step
+
+```bash
+# 1) Prepare env
+cp .env.example .env        # fill HF_TOKEN, WANDB_*; AWS/Lambda only if you use cloud
+# optional: install uv if missing (https://docs.astral.sh/uv/getting-started)
+
+# 2) Activate MLX env (auto-uses uv if available)
+source setup_env.sh mlx
+
+# 3) Run interactive chat on Mac (choose a 4-bit MLX model)
+python scripts/gpu/inference_unified.py \
+  --backend mlx \
+  --model mlx-community/Qwen2.5-7B-Instruct-4bit \
+  --interactive \
+  --max-tokens 256 \
+  --temperature 0.2 \
+  --system-prompt "You are a concise coding assistant."
+
+# 4) Batch from a JSONL file (messages format)
+cat > data/processed/test.jsonl <<'EOF'
+{"messages":[{"role":"user","content":"Summarize the benefits of MLX for LLMs on Mac."}]}
+{"messages":[{"role":"system","content":"You are a translator."},{"role":"user","content":"Translate to English: MLX는 애플 실리콘에서 빠르게 동작합니다."}]}
+EOF
+
+python scripts/gpu/inference_unified.py \
+  --backend mlx \
+  --model mlx-community/Qwen2.5-7B-Instruct-4bit \
+  --input data/processed/test.jsonl \
+  --output outputs/predictions.jsonl \
+  --max-tokens 256 \
+  --temperature 0.2
+
+# 5) Switch models by swapping --model (e.g., mlx-community/Llama-3.2-3B-Instruct)
+# 6) Optional: load your LoRA adapter
+#    add: --adapter outputs/mlx/adapters/korean_translation
+```
+
+**Tunable parameters (MLX backend):**
+- `--max-tokens` (new tokens per response)
+- `--temperature` (0 = deterministic; >0 enables sampling)
+- `--system-prompt` (prepends system message)
+- `--adapter` (LoRA path), `--input/--output` (batch), `--interactive` (chat), `--serve` not supported for MLX
+
 ### 3. Prepare Data
 
 ```bash
@@ -83,27 +127,36 @@ python scripts/mlx/train_sft.py --config configs/mlx/sft_math_reasoning.yaml
 ### 5. Train (Cloud GPU)
 
 ```bash
-# SFT
+# Translation (SFT)
 python scripts/gpu/train_sft.py --config configs/gpu/sft_config.yaml
 
-# DPO (after SFT)
+# Math pipeline (SFT -> DPO -> GRPO)
+python scripts/gpu/train_sft.py --config configs/gpu/sft_math_config.yaml
+
+# DPO (after math SFT)
 python scripts/gpu/train_dpo.py --config configs/gpu/dpo_config.yaml
 
-# GRPO (after DPO)
+# GRPO (after math DPO)
 python scripts/gpu/train_grpo.py --config configs/gpu/grpo_config.yaml
 
 # With DeepSpeed (multi-GPU)
 accelerate launch --config_file configs/gpu/deepspeed/ds_zero2.json \
-    scripts/gpu/train_sft.py --config configs/gpu/sft_config.yaml
+    scripts/gpu/train_sft.py --config configs/gpu/sft_config.yaml  # or sft_math_config.yaml
 
 # With FSDP (multi-GPU)
 accelerate launch --config_file configs/gpu/fsdp/accelerate_fsdp.yaml \
-    scripts/gpu/train_sft.py --config configs/gpu/sft_config.yaml
+    scripts/gpu/train_sft.py --config configs/gpu/sft_config.yaml  # or sft_math_config.yaml
+
+# Optional: apply a hardware profile (batch sizes, dtype, attention defaults)
+python scripts/gpu/train_sft.py --config configs/gpu/sft_config.yaml \
+    --profile configs/gpu/profiles/a10_24gb.yaml
 ```
 
 ### 6. Inference
 
 The unified inference script supports multiple backends and model families:
+
+Tip: use `--inference-config configs/inference/*.yaml` for reproducible presets, and see `SERVING.md` for vLLM/SGLang server + multi-GPU notes.
 
 ```bash
 # Qwen model with vLLM (high throughput)
@@ -148,6 +201,10 @@ python scripts/gpu/inference_unified.py --model Qwen/Qwen2.5-7B-Instruct \
 python scripts/mlx/evaluate.py --task translation --adapter outputs/mlx/adapters/korean_translation
 python scripts/mlx/evaluate.py --task math --adapter outputs/mlx/adapters/math_reasoning
 
+# Task-level eval (GPU inference + custom metrics)
+make eval-translation
+make eval-math
+
 # GPU - LM Evaluation Harness
 python scripts/gpu/evaluate_lm_harness.py --model outputs/gpu/checkpoints/sft/final \
     --tasks gsm8k,arc_easy --output outputs/eval/results.json
@@ -161,14 +218,32 @@ python scripts/gpu/evaluate_lm_harness.py --custom-eval math \
     --test-file outputs/predictions.jsonl
 ```
 
+### 8. Export (Optional)
+
+Use this when you want a single deployable artifact (no adapter dependency) or to prepare for export toolchains.
+
+```bash
+# Merge LoRA adapter into base model (writes outputs/gpu/merged_models/*)
+make export-merge-translation
+make export-merge-math
+
+# Export merged model to ONNX (best-effort)
+make export-onnx
+```
+
 ## Cloud GPU Credentials (.env)
 
-Only needed when launching or connecting to external GPUs (AWS/Lambda). Copy `.env.example` and fill:
+Only needed if you want your own automation around provisioning/SSH (this repo does not launch AWS/Lambda instances for you). Copy `.env.example` and fill:
 
 - **AWS**: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`, `AWS_INSTANCE_TYPE` (e.g., `g5.2xlarge`), `AWS_EC2_KEY_NAME`, `AWS_EC2_SECURITY_GROUP`, `AWS_EC2_SUBNET_ID`
 - **Lambda Labs**: `LAMBDA_API_KEY`, `LAMBDA_USERNAME`, `LAMBDA_REGION` (e.g., `us-east-1`), `LAMBDA_INSTANCE_TYPE` (e.g., `gpu_1x_a10`), `LAMBDA_SSH_KEY_PATH`
 
-With these set, you can authenticate against your cloud provider and use the GPU-backed environment set up by `setup_env.sh gpu` with the same training/inference commands.
+Provision a GPU VM/container, then run `source setup_env.sh gpu` on that machine and use the same `scripts/gpu/*` commands.
+
+**Cloud GPU bootstrap checklist (AWS/Lambda):**
+- Ensure `nvidia-smi` works on the box (drivers installed) before installing Python deps.
+- Prefer Ampere+ GPUs (A10/A100/H100) if you want `flash_attention_2` and best vLLM support.
+- If you use a T4/older GPU, set `attn_implementation: eager` and `bf16: false` in GPU configs.
 
 ## Implementation Progress
 
@@ -245,16 +320,43 @@ With these set, you can authenticate against your cloud provider and use the GPU
 - Added vLLM to GPU requirements
 - Updated TRL version for GRPO support
 
+**Step 11:** Added GPU hardware profiles + config merge
+- `configs/gpu/profiles/*` (A10/T4/A100/H100 presets)
+- `--profile` support for `scripts/gpu/train_{sft,dpo,grpo}.py`
+- `src/training/config_utils.py` for safe YAML merges
+
+**Step 12:** Added task-level evaluation entrypoints
+- `scripts/eval/eval_translation.py` + `configs/evaluation/translation.yaml`
+- `scripts/eval/eval_math.py` + `configs/evaluation/math.yaml`
+- `make eval-translation` / `make eval-math` for one-command eval
+
+**Step 13:** Added dataset manifests + preference-pair generation
+- `src/data/manifest.py` and `manifest.json` outputs from `data/scripts/prepare_*.py`
+- `data/scripts/generate_math_preferences.py` + `src/data/preferences.py` (reward-based DPO pairs)
+
+**Step 14:** Added serving + export utilities
+- `configs/inference/*` presets + `--inference-config` support
+- `SERVING.md` (vLLM/SGLang server + multi-GPU notes)
+- `scripts/gpu/merge_lora.py` + Make targets for merged deploy artifacts
+- `scripts/export/export_onnx.py` + `configs/export/onnx.yaml` (best-effort ONNX)
+- `scripts/export/export_tensorrt_llm.md` (runbook)
+
+**Step 15:** Added CPU-only pipeline smoke tests
+- `tests/test_pipeline_smoke.py` validates new plumbing without GPUs/network
+
 ## Project Structure
 
 ```
 llm-finetuning/
 ├── configs/              # Training configurations
+│   ├── evaluation/      # Task-level eval configs
+│   ├── export/          # Export presets (ONNX, etc.)
+│   ├── inference/       # Inference presets (vLLM/SGLang/MLX)
 │   ├── mlx/             # Mac MLX configs
-│   ├── gpu/             # Cloud GPU configs
-│   │   ├── deepspeed/   # DeepSpeed ZeRO configs
-│   │   └── fsdp/        # FSDP configs
-│   └── evaluation/      # Eval configs
+│   └── gpu/             # Cloud GPU configs
+│       ├── deepspeed/   # DeepSpeed ZeRO configs
+│       ├── fsdp/        # FSDP configs
+│       └── profiles/    # GPU hardware profiles (VRAM/dtype defaults)
 ├── data/
 │   ├── raw/             # Raw datasets
 │   ├── processed/       # Processed JSONL files
@@ -262,10 +364,13 @@ llm-finetuning/
 ├── src/                 # Core source code
 │   ├── data/            # Data loading utilities
 │   ├── evaluation/      # Translation metrics
-│   └── rewards/         # Math reward functions
+│   ├── rewards/         # Math reward functions
+│   └── training/        # Config merge + training sanity checks
 ├── scripts/
+│   ├── eval/            # Task-level eval entrypoints
+│   ├── export/          # Export utilities/runbooks
 │   ├── mlx/             # Mac training scripts
-│   ├── gpu/             # GPU training scripts
+│   ├── gpu/             # GPU training/inference scripts
 │   └── common/          # Shared utilities
 ├── tests/               # Comprehensive test suite
 ├── outputs/             # Checkpoints and logs
@@ -360,6 +465,10 @@ mlflow:
 | **Model Support** | Qwen, Llama, Mistral, Phi, Gemma families |
 | **Evaluation** | lm-evaluation-harness, custom metrics |
 | **Logging** | Wandb, MLflow, TensorBoard |
+
+## Next Steps (Roadmap)
+
+See `NEXT_STEPS.md` for remaining optional enhancements (e.g., TensorRT-LLM automation, VRAM preflight checks, one-command pipeline wrappers).
 
 ## License
 

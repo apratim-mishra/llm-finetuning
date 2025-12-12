@@ -1,0 +1,14 @@
+# Evaluation preset: Korean-English translation
+inference_config: configs/inference/translation_vllm.yaml
+
+data:
+  test_file: data/processed/korean_english/test.jsonl
+  max_samples: 200
+
+output_dir: outputs/eval/translation
+
+metrics:
+  - bleu
+  - chrf
+  - ter
+

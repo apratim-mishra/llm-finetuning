@@ -58,6 +58,7 @@ def extract_answer(text: str) -> str:
             answer = match.group(1)
             # Clean the extracted answer
             answer = answer.replace(",", "").replace("$", "").replace(" ", "").strip()
+            answer = answer.rstrip(".,;:")
             return answer
 
     # Fallback: find the last number in the text
@@ -69,7 +70,7 @@ def extract_answer(text: str) -> str:
             try:
                 val = float(num)
                 if abs(val) >= 0.01 or val == 0:  # Accept 0 as valid answer
-                    return num
+                    return num.rstrip(".,;:")
             except ValueError:
                 continue
 

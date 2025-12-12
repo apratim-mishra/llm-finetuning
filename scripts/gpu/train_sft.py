@@ -22,7 +22,6 @@ from pathlib import Path
 from typing import Optional
 
 import torch
-import yaml
 from rich.console import Console
 from rich.panel import Panel
 
@@ -36,21 +35,10 @@ console = Console()
 
 
 def load_config(config_path: str) -> dict:
-    """Load YAML configuration with environment variable expansion."""
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
+    """Load YAML configuration with optional profile overrides."""
+    from src.training.config_utils import load_config_with_profile
 
-    # Expand environment variables in string values
-    def expand_env(obj):
-        if isinstance(obj, str):
-            return os.path.expandvars(obj)
-        elif isinstance(obj, dict):
-            return {k: expand_env(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [expand_env(item) for item in obj]
-        return obj
-
-    return expand_env(config)
+    return load_config_with_profile(config_path)
 
 
 def setup_wandb(config: dict, run_name: Optional[str] = None) -> bool:
@@ -429,6 +417,12 @@ Examples:
         help="Path to training config YAML"
     )
     parser.add_argument(
+        "--profile",
+        type=str,
+        default=None,
+        help="Optional GPU profile YAML to merge on top of config (e.g., configs/gpu/profiles/a10_24gb.yaml)",
+    )
+    parser.add_argument(
         "--resume",
         type=str,
         default=None,
@@ -447,11 +441,17 @@ Examples:
         console.print(f"[red]Config not found: {args.config}[/red]")
         sys.exit(1)
 
-    config = load_config(args.config)
+    from src.training.config_utils import load_config_with_profile
+
+    config = load_config_with_profile(args.config, profile_path=args.profile)
 
     # Handle resume
     if args.resume:
         config["training"]["resume_from_checkpoint"] = args.resume
+
+    from src.training.sanity import require_cuda
+
+    require_cuda(console=console)
 
     # Run training
     train(config)

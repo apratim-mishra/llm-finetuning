@@ -29,7 +29,6 @@ from pathlib import Path
 from typing import Callable, List, Optional
 
 import torch
-import yaml
 from rich.console import Console
 from rich.panel import Panel
 
@@ -42,20 +41,10 @@ console = Console()
 
 
 def load_config(config_path: str) -> dict:
-    """Load YAML configuration with environment variable expansion."""
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
+    """Load YAML configuration with optional profile overrides."""
+    from src.training.config_utils import load_config_with_profile
 
-    def expand_env(obj):
-        if isinstance(obj, str):
-            return os.path.expandvars(obj)
-        elif isinstance(obj, dict):
-            return {k: expand_env(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [expand_env(item) for item in obj]
-        return obj
-
-    return expand_env(config)
+    return load_config_with_profile(config_path)
 
 
 def setup_logging(config: dict, run_name: Optional[str] = None) -> dict:
@@ -114,13 +103,14 @@ def setup_logging(config: dict, run_name: Optional[str] = None) -> dict:
 
 
 def get_model_and_tokenizer(config: dict):
-    """Load model with quantization and proper attention implementation."""
+    """Load base model (optionally with a LoRA adapter) and tokenizer."""
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
     model_config = config.get("model", {})
     quant_config = config.get("quantization", {})
 
     model_name = model_config.get("name")
+    adapter_path = model_config.get("adapter") or model_config.get("adapter_path")
     console.print(f"[blue]Loading model: {model_name}[/blue]")
 
     # Build quantization config
@@ -169,8 +159,16 @@ def get_model_and_tokenizer(config: dict):
         tokenizer.pad_token = tokenizer.eos_token
         tokenizer.pad_token_id = tokenizer.eos_token_id
 
+    has_adapter = False
+    if adapter_path and Path(adapter_path).exists():
+        from peft import PeftModel
+
+        model = PeftModel.from_pretrained(model, adapter_path, is_trainable=True)
+        has_adapter = True
+        console.print(f"[blue]Loaded adapter (continuing): {adapter_path}[/blue]")
+
     console.print(f"[green]Model loaded: {model.num_parameters() / 1e9:.2f}B parameters[/green]")
-    return model, tokenizer
+    return model, tokenizer, has_adapter
 
 
 def get_peft_config(config: dict):
@@ -297,11 +295,11 @@ def train(config: dict):
     # Setup logging
     logging_status = setup_logging(config)
 
-    # Load model and tokenizer
-    model, tokenizer = get_model_and_tokenizer(config)
+    # Load model and tokenizer (optionally continuing from an existing adapter)
+    model, tokenizer, has_adapter = get_model_and_tokenizer(config)
 
-    # PEFT config
-    peft_config = get_peft_config(config)
+    # PEFT config (create a new adapter only if one wasn't loaded)
+    peft_config = None if has_adapter else get_peft_config(config)
 
     # Get reward function
     reward_fn = get_reward_function(config)
@@ -343,7 +341,7 @@ def train(config: dict):
         gradient_checkpointing_kwargs=gc_kwargs,
         # GRPO specific
         num_generations=grpo_config.get("num_generations", 4),
-        max_completion_length=grpo_config.get("max_completion_length", 512),
+        max_completion_length=grpo_config.get("max_completion_length", grpo_config.get("max_new_tokens", 512)),
         max_prompt_length=grpo_config.get("max_prompt_length", 512),
         temperature=grpo_config.get("temperature", 0.7),
         # Logging
@@ -446,6 +444,12 @@ Examples:
         """
     )
     parser.add_argument("--config", "-c", type=str, required=True, help="Path to config YAML")
+    parser.add_argument(
+        "--profile",
+        type=str,
+        default=None,
+        help="Optional GPU profile YAML to merge on top of config (e.g., configs/gpu/profiles/a10_24gb.yaml)",
+    )
     parser.add_argument("--resume", type=str, default=None, help="Resume from checkpoint")
     parser.add_argument("--local_rank", type=int, default=-1, help="Local rank for distributed")
     args = parser.parse_args()
@@ -454,10 +458,16 @@ Examples:
         console.print(f"[red]Config not found: {args.config}[/red]")
         sys.exit(1)
 
-    config = load_config(args.config)
+    from src.training.config_utils import load_config_with_profile
+
+    config = load_config_with_profile(args.config, profile_path=args.profile)
 
     if args.resume:
         config["training"]["resume_from_checkpoint"] = args.resume
+
+    from src.training.sanity import require_cuda
+
+    require_cuda(console=console)
 
     train(config)
 

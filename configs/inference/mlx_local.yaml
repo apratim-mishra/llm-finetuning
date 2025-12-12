@@ -1,0 +1,13 @@
+# MLX inference preset: Mac Apple Silicon
+backend: mlx
+model: mlx-community/Qwen2.5-7B-Instruct-4bit
+system_prompt: You are a helpful assistant.
+
+# Generation
+max_tokens: 256
+temperature: 0.2
+top_p: 0.95
+
+# UX
+interactive: true
+

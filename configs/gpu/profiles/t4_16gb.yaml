@@ -1,0 +1,27 @@
+# GPU profile: NVIDIA T4 16GB (conservative defaults)
+#
+# Apply with:
+#   python scripts/gpu/train_sft.py --config ... --profile configs/gpu/profiles/t4_16gb.yaml
+#
+# Notes:
+# - T4 is pre-Ampere: prefer fp16 and eager attention.
+
+model:
+  torch_dtype: "float16"
+  attn_implementation: "eager"
+
+quantization:
+  enabled: true
+  bnb_4bit_compute_dtype: "float16"
+
+training:
+  bf16: false
+  fp16: true
+  per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
+  gradient_accumulation_steps: 16
+  dataloader_num_workers: 2
+
+sft:
+  packing: false
+

@@ -2,11 +2,15 @@
 # Makefile - Common commands for LLM Fine-tuning Pipeline
 # =============================================================================
 
-.PHONY: setup-mlx setup-gpu data-translation data-math train-mlx-translation train-mlx-math \
-        eval-mlx train-gpu-sft train-gpu-dpo train-gpu-grpo clean help
+.PHONY: setup-mlx setup-gpu data-translation data-math data-math-preferences train-mlx-translation train-mlx-math \
+        train-gpu-sft-math \
+        eval-mlx eval-translation eval-math train-gpu-sft train-gpu-dpo train-gpu-grpo export-merge-translation export-merge-math export-onnx clean help
 
 # Default Python
-PYTHON := python3
+PYTHON := python
+
+# Make runs each recipe line in its own shell; use bash for `source`.
+SHELL := /bin/bash
 
 # =============================================================================
 # Environment Setup
@@ -19,11 +23,11 @@ setup-project:
 
 setup-mlx:
 	@echo "Setting up Mac MLX environment..."
-	source setup_env.sh mlx
+	bash -c "source ./setup_env.sh mlx"
 
 setup-gpu:
 	@echo "Setting up GPU environment..."
-	source setup_env.sh gpu
+	bash -c "source ./setup_env.sh gpu"
 
 # =============================================================================
 # Data Preparation
@@ -40,6 +44,14 @@ data-translation-full:
 data-math:
 	@echo "Preparing math reasoning data..."
 	$(PYTHON) data/scripts/prepare_math_data.py
+
+data-math-preferences:
+	@echo "Generating math preference pairs (DPO)..."
+	$(PYTHON) data/scripts/generate_math_preferences.py \
+		--input data/processed/math/grpo_prompts.jsonl \
+		--output-dir data/processed/math \
+		--backend vllm \
+		--model Qwen/Qwen2.5-7B-Instruct
 
 data-math-full:
 	@echo "Preparing full math reasoning data..."
@@ -75,12 +87,28 @@ eval-mlx-math:
 		--adapter outputs/mlx/adapters/math_reasoning
 
 # =============================================================================
+# Evaluation (Task-level)
+# =============================================================================
+
+eval-translation:
+	@echo "Evaluating translation task (GPU inference + metrics)..."
+	$(PYTHON) scripts/eval/eval_translation.py --config configs/evaluation/translation.yaml
+
+eval-math:
+	@echo "Evaluating math task (GPU inference + reward metrics)..."
+	$(PYTHON) scripts/eval/eval_math.py --config configs/evaluation/math.yaml
+
+# =============================================================================
 # GPU Training (Cloud)
 # =============================================================================
 
 train-gpu-sft:
-	@echo "Training SFT model (GPU)..."
+	@echo "Training SFT model (GPU, translation)..."
 	$(PYTHON) scripts/gpu/train_sft.py --config configs/gpu/sft_config.yaml
+
+train-gpu-sft-math:
+	@echo "Training SFT model (GPU, math)..."
+	$(PYTHON) scripts/gpu/train_sft.py --config configs/gpu/sft_math_config.yaml
 
 train-gpu-sft-deepspeed:
 	@echo "Training SFT model with DeepSpeed (GPU)..."
@@ -101,8 +129,28 @@ train-gpu-grpo:
 	$(PYTHON) scripts/gpu/train_grpo.py --config configs/gpu/grpo_config.yaml
 
 # Full math pipeline
-train-math-pipeline: train-gpu-sft train-gpu-dpo train-gpu-grpo
+train-math-pipeline: train-gpu-sft-math train-gpu-dpo train-gpu-grpo
 	@echo "Math training pipeline complete!"
+
+# =============================================================================
+# Export / Packaging
+# =============================================================================
+
+export-merge-translation:
+	@echo "Merging translation LoRA adapter into base model..."
+	$(PYTHON) scripts/gpu/merge_lora.py \
+		--adapter outputs/gpu/checkpoints/sft/final \
+		--output outputs/gpu/merged_models/translation_sft_merged
+
+export-merge-math:
+	@echo "Merging math GRPO LoRA adapter into base model..."
+	$(PYTHON) scripts/gpu/merge_lora.py \
+		--adapter outputs/gpu/checkpoints/math_grpo/final \
+		--output outputs/gpu/merged_models/math_grpo_merged
+
+export-onnx:
+	@echo "Exporting merged model to ONNX (best-effort)..."
+	$(PYTHON) scripts/export/export_onnx.py --config configs/export/onnx.yaml
 
 # =============================================================================
 # Evaluation (GPU)
@@ -156,6 +204,7 @@ help:
 	@echo "Data Preparation:"
 	@echo "  make data-translation  - Prepare Korean-English data (subset)"
 	@echo "  make data-math         - Prepare math data (subset)"
+	@echo "  make data-math-preferences - Generate DPO preference pairs (GPU)"
 	@echo "  make data-all          - Prepare all data"
 	@echo ""
 	@echo "MLX Training (Mac):"
@@ -166,12 +215,22 @@ help:
 	@echo "  make eval-mlx-translation   - Evaluate translation (BLEU)"
 	@echo "  make eval-mlx-math          - Evaluate math (accuracy)"
 	@echo ""
+	@echo "Task-level Evaluation:"
+	@echo "  make eval-translation       - GPU inference + translation metrics"
+	@echo "  make eval-math              - GPU inference + math reward metrics"
+	@echo ""
 	@echo "GPU Training (Cloud):"
-	@echo "  make train-gpu-sft          - Train SFT"
+	@echo "  make train-gpu-sft          - Train SFT (translation)"
+	@echo "  make train-gpu-sft-math     - Train SFT (math)"
 	@echo "  make train-gpu-sft-deepspeed- Train SFT with DeepSpeed"
 	@echo "  make train-gpu-sft-fsdp     - Train SFT with FSDP"
 	@echo "  make train-gpu-dpo          - Train DPO"
 	@echo "  make train-gpu-grpo         - Train GRPO"
+	@echo ""
+	@echo "Export / Packaging:"
+	@echo "  make export-merge-translation - Merge translation LoRA into base"
+	@echo "  make export-merge-math        - Merge math GRPO LoRA into base"
+	@echo "  make export-onnx              - Export merged model to ONNX"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make clean             - Clean temporary files"

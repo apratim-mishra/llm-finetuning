@@ -6,8 +6,9 @@
 
 # Model Settings
 model:
-  # Use your DPO checkpoint
-  name: "outputs/gpu/checkpoints/math_dpo/final"
+  # Base model + DPO adapter (GRPO continues training from DPO)
+  name: "Qwen/Qwen2.5-7B-Instruct"
+  adapter: "outputs/gpu/checkpoints/math_dpo/final"
   torch_dtype: "bfloat16"
   attn_implementation: "flash_attention_2"
   device_map: "auto"

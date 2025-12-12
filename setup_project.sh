@@ -6,13 +6,15 @@
 
 set -e
 
-echo "🚀 Setting up LLM Fine-tuning Project Structure..."
+echo "Setting up LLM Fine-tuning Project Structure..."
 
 # Create main directories
-mkdir -p configs/{mlx,gpu/{deepspeed,fsdp},evaluation}
+mkdir -p configs/{mlx,gpu/{deepspeed,fsdp,profiles},evaluation}
+mkdir -p configs/inference
+mkdir -p configs/export
 mkdir -p data/{raw/{korean_english,math},processed/{korean_english,math},scripts}
 mkdir -p src/{data,training,evaluation,rewards,inference}
-mkdir -p scripts/{mlx,gpu,common}
+mkdir -p scripts/{mlx,gpu,common,eval,export}
 mkdir -p notebooks
 mkdir -p outputs/{mlx/{checkpoints,adapters,logs},gpu/{checkpoints,merged_models,logs}}
 mkdir -p tests
@@ -38,9 +40,9 @@ touch outputs/gpu/checkpoints/.gitkeep
 touch outputs/gpu/merged_models/.gitkeep
 touch outputs/gpu/logs/.gitkeep
 
-echo "✅ Folder structure created!"
+echo "Folder structure created!"
 echo ""
-echo "📁 Project Structure:"
+echo "Project Structure:"
 find . -type d | head -40 | sed 's/^/  /'
 
 echo ""

@@ -120,6 +120,13 @@ sglang = [
     "sglang[all]>=0.2.0",
 ]
 
+# Export / deployment tooling (optional)
+export = [
+    "onnx>=1.16.0",
+    "onnxruntime>=1.18.0",
+    "optimum>=1.20.0",
+]
+
 # HELM evaluation framework
 helm = [
     "crfm-helm>=0.5.0",
@@ -163,7 +170,7 @@ eval = [
 
 # All dependencies (GPU environment with extras)
 all = [
-    "llm-finetuning[gpu,dev,notebook,weave,eval]",
+    "llm-finetuning[gpu,dev,notebook,weave,eval,export]",
 ]
 
 [project.urls]
@@ -180,6 +187,10 @@ llm-infer-vllm = "scripts.gpu.inference_vllm:main"
 llm-infer-sglang = "scripts.gpu.inference_sglang:main"
 llm-eval = "scripts.gpu.evaluate_lm_harness:main"
 llm-eval-helm = "scripts.gpu.evaluate_helm:main"
+llm-merge-lora = "scripts.gpu.merge_lora:main"
+llm-eval-translation = "scripts.eval.eval_translation:main"
+llm-eval-math = "scripts.eval.eval_math:main"
+llm-export-onnx = "scripts.export.export_onnx:main"
 train-mlx = "scripts.mlx.train_sft:main"
 # prepare-data = "data.scripts.prepare_all:main"  # TODO: create prepare_all.py
 

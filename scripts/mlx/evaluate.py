@@ -16,23 +16,31 @@ from rich.table import Table
 
 console = Console()
 
+load = None  # type: ignore
+generate = None  # type: ignore
+
 
 def load_model_and_tokenizer(model_path: str, adapter_path: str = None):
     """Load MLX model with optional LoRA adapters."""
-    try:
-        from mlx_lm import load, generate
-        
-        if adapter_path and Path(adapter_path).exists():
-            console.print(f"[blue]Loading model with adapters from {adapter_path}[/blue]")
-            model, tokenizer = load(model_path, adapter_path=adapter_path)
-        else:
-            console.print(f"[blue]Loading base model: {model_path}[/blue]")
-            model, tokenizer = load(model_path)
-        
-        return model, tokenizer, generate
-    except ImportError:
-        console.print("[red]Error: mlx-lm not installed. Run: pip install mlx-lm[/red]")
-        raise
+    global load, generate
+    if load is None and generate is None:
+        try:
+            from mlx_lm import generate as mlx_generate, load as mlx_load  # type: ignore
+        except ImportError:
+            console.print("[red]Error: mlx-lm not installed. Run: pip install mlx-lm[/red]")
+            raise
+
+        load = mlx_load
+        generate = mlx_generate
+
+    if adapter_path and Path(adapter_path).exists():
+        console.print(f"[blue]Loading model with adapters from {adapter_path}[/blue]")
+        model, tokenizer = load(model_path, adapter_path=adapter_path)  # type: ignore[misc]
+    else:
+        console.print(f"[blue]Loading base model: {model_path}[/blue]")
+        model, tokenizer = load(model_path)  # type: ignore[misc]
+
+    return model, tokenizer, generate
 
 
 def generate_response(
@@ -154,12 +162,12 @@ def extract_answer(text: str) -> str:
         match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
         if match:
             # Clean the number
-            num = match.group(1).replace(",", "").replace("$", "")
+            num = match.group(1).replace(",", "").replace("$", "").rstrip(".,;:")
             return num
     
     # Fallback: last number in text
     numbers = re.findall(r"[0-9]+\.?[0-9]*", text)
-    return numbers[-1] if numbers else ""
+    return numbers[-1].rstrip(".,;:") if numbers else ""
 
 
 def normalize_answer(answer: str) -> float:

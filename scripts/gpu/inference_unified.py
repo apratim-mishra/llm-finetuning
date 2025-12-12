@@ -28,12 +28,14 @@ Usage:
 import argparse
 import json
 import logging
+import os
 import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+import yaml
 from rich.console import Console
 from rich.progress import track
 
@@ -90,6 +92,45 @@ MODEL_CONFIGS = {
         supports_system=False,
     ),
 }
+
+
+def _expand_env(obj: Any) -> Any:
+    if isinstance(obj, str):
+        return os.path.expandvars(obj)
+    if isinstance(obj, list):
+        return [_expand_env(v) for v in obj]
+    if isinstance(obj, dict):
+        return {k: _expand_env(v) for k, v in obj.items()}
+    return obj
+
+
+def _extract_inference_config_path(argv: List[str]) -> Optional[str]:
+    for i, token in enumerate(argv):
+        if token == "--inference-config" and i + 1 < len(argv):
+            return argv[i + 1]
+        if token.startswith("--inference-config="):
+            return token.split("=", 1)[1]
+    return None
+
+
+def load_inference_config(path: str) -> dict:
+    config_path = Path(path)
+    if not config_path.exists():
+        raise FileNotFoundError(f"Inference config not found: {config_path}")
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f) or {}
+
+    cfg = _expand_env(cfg)
+
+    flattened: dict[str, Any] = {}
+    for key, value in cfg.items():
+        if isinstance(value, dict) and key in {"generation", "runtime", "serve", "io"}:
+            flattened.update(value)
+        else:
+            flattened[key] = value
+
+    return flattened
 
 
 def detect_model_family(model_path: str) -> str:
@@ -202,6 +243,7 @@ class VLLMBackend(InferenceBackend):
         tensor_parallel_size: int = 1,
         dtype: str = "auto",
         max_model_len: Optional[int] = None,
+        gpu_memory_utilization: float = 0.9,
         adapter_path: Optional[str] = None,
         **kwargs
     ):
@@ -218,6 +260,7 @@ class VLLMBackend(InferenceBackend):
             "tensor_parallel_size": tensor_parallel_size,
             "dtype": dtype,
             "trust_remote_code": True,
+            "gpu_memory_utilization": gpu_memory_utilization,
         }
 
         if max_model_len:
@@ -277,6 +320,7 @@ class SGLangBackend(InferenceBackend):
         model_path: str,
         tensor_parallel_size: int = 1,
         dtype: str = "auto",
+        max_model_len: Optional[int] = None,
         adapter_path: Optional[str] = None,
         **kwargs
     ):
@@ -294,6 +338,9 @@ class SGLangBackend(InferenceBackend):
             "dtype": dtype,
             "trust_remote_code": True,
         }
+
+        if max_model_len:
+            runtime_kwargs["context_length"] = max_model_len
 
         if adapter_path and Path(adapter_path).exists():
             runtime_kwargs["lora_paths"] = [adapter_path]
@@ -534,6 +581,7 @@ def batch_inference(
     system_prompt: Optional[str] = None,
     max_tokens: int = 512,
     temperature: float = 0.1,
+    top_p: float = 0.95,
 ):
     """Run batch inference on JSONL file."""
     console.print(f"[blue]Processing: {input_file}[/blue]")
@@ -579,7 +627,7 @@ def batch_inference(
 
     # Generate
     console.print("[bold]Generating responses...[/bold]")
-    outputs = backend.generate(prompts, max_tokens=max_tokens, temperature=temperature)
+    outputs = backend.generate(prompts, max_tokens=max_tokens, temperature=temperature, top_p=top_p)
 
     # Clean outputs
     results = []
@@ -613,6 +661,7 @@ def interactive_mode(
     system_prompt: Optional[str] = None,
     max_tokens: int = 512,
     temperature: float = 0.7,
+    top_p: float = 0.95,
 ):
     """Run interactive chat."""
     config = MODEL_CONFIGS.get(model_family, MODEL_CONFIGS["qwen"])
@@ -645,6 +694,7 @@ def interactive_mode(
                 [prompt],
                 max_tokens=max_tokens,
                 temperature=temperature,
+                top_p=top_p,
             )[0]
 
             # Clean response
@@ -661,6 +711,15 @@ def interactive_mode(
 
 
 def main():
+    config_path = _extract_inference_config_path(sys.argv[1:])
+    config_defaults: dict[str, Any] = {}
+    if config_path:
+        try:
+            config_defaults = load_inference_config(config_path)
+        except Exception as e:
+            console.print(f"[red]Failed to load inference config: {e}[/red]")
+            sys.exit(2)
+
     parser = argparse.ArgumentParser(
         description="Unified Inference for Multiple Model Types and Backends",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -684,33 +743,101 @@ Examples:
 
     # With LoRA adapter
     python scripts/gpu/inference_unified.py --model Qwen/Qwen2.5-7B-Instruct \\
-        --adapter outputs/checkpoints/sft/final --backend vllm --input test.jsonl
+        --adapter outputs/gpu/checkpoints/sft/final --backend vllm --input test.jsonl
 
 Model families auto-detected: qwen, llama, mistral, phi, gemma
 Backends: vllm (throughput), sglang (latency), hf (compatibility), mlx (Mac)
         """
     )
 
-    parser.add_argument("--model", "-m", type=str, required=True, help="Model path or HF ID")
-    parser.add_argument("--backend", "-b", type=str, default="vllm",
-                       choices=["vllm", "sglang", "hf", "huggingface", "mlx"],
-                       help="Inference backend")
-    parser.add_argument("--adapter", "-a", type=str, help="LoRA adapter path")
-    parser.add_argument("--input", "-i", type=str, help="Input JSONL file")
-    parser.add_argument("--output", "-o", type=str, default="outputs/predictions.jsonl")
-    parser.add_argument("--interactive", action="store_true", help="Interactive mode")
-    parser.add_argument("--serve", action="store_true", help="Start API server")
-    parser.add_argument("--port", type=int, default=8000, help="Server port")
-    parser.add_argument("--host", type=str, default="0.0.0.0", help="Server host")
-    parser.add_argument("--system-prompt", type=str, help="System prompt")
-    parser.add_argument("--model-family", type=str, help="Override model family detection")
-    parser.add_argument("--max-tokens", type=int, default=512)
-    parser.add_argument("--temperature", type=float, default=0.1)
-    parser.add_argument("--tensor-parallel", type=int, default=1)
-    parser.add_argument("--load-4bit", action="store_true", help="Load in 4-bit (HF only)")
-    parser.add_argument("--load-8bit", action="store_true", help="Load in 8-bit (HF only)")
+    parser.add_argument(
+        "--inference-config",
+        type=str,
+        default=config_path,
+        help="YAML config to set defaults (see configs/inference/*.yaml)",
+    )
+    parser.add_argument("--model", "-m", type=str, default=config_defaults.get("model"), help="Model path or HF ID")
+    parser.add_argument(
+        "--backend",
+        "-b",
+        type=str,
+        default=config_defaults.get("backend", "vllm"),
+        choices=["vllm", "sglang", "hf", "huggingface", "mlx"],
+        help="Inference backend",
+    )
+    parser.add_argument("--adapter", "-a", type=str, default=config_defaults.get("adapter"), help="LoRA adapter path")
+    parser.add_argument("--input", "-i", type=str, default=config_defaults.get("input"), help="Input JSONL file")
+    parser.add_argument(
+        "--output",
+        "-o",
+        type=str,
+        default=config_defaults.get("output", "outputs/predictions.jsonl"),
+    )
+    parser.add_argument(
+        "--interactive",
+        dest="interactive",
+        action="store_true",
+        default=bool(config_defaults.get("interactive", False)),
+        help="Interactive mode",
+    )
+    parser.add_argument("--no-interactive", dest="interactive", action="store_false", help="Disable interactive mode")
+    parser.add_argument(
+        "--serve",
+        dest="serve",
+        action="store_true",
+        default=bool(config_defaults.get("serve", False)),
+        help="Start API server",
+    )
+    parser.add_argument("--no-serve", dest="serve", action="store_false", help="Disable server mode")
+    parser.add_argument("--port", type=int, default=int(config_defaults.get("port", 8000)), help="Server port")
+    parser.add_argument("--host", type=str, default=str(config_defaults.get("host", "0.0.0.0")), help="Server host")
+    parser.add_argument("--system-prompt", type=str, default=config_defaults.get("system_prompt"), help="System prompt")
+    parser.add_argument(
+        "--model-family",
+        type=str,
+        default=config_defaults.get("model_family"),
+        help="Override model family detection",
+    )
+    parser.add_argument("--max-tokens", type=int, default=int(config_defaults.get("max_tokens", 512)))
+    parser.add_argument("--temperature", type=float, default=float(config_defaults.get("temperature", 0.1)))
+    parser.add_argument("--top-p", type=float, default=float(config_defaults.get("top_p", 0.95)))
+    parser.add_argument("--tensor-parallel", type=int, default=int(config_defaults.get("tensor_parallel", 1)))
+    parser.add_argument(
+        "--dtype",
+        type=str,
+        default=str(config_defaults.get("dtype", "auto")),
+        choices=["auto", "float16", "bfloat16", "float32"],
+        help="Model dtype (backend-dependent)",
+    )
+    parser.add_argument("--max-model-len", type=int, default=config_defaults.get("max_model_len"))
+    parser.add_argument(
+        "--gpu-memory-utilization",
+        type=float,
+        default=float(config_defaults.get("gpu_memory_utilization", 0.9)),
+        help="vLLM GPU memory utilization target (0-1)",
+    )
+    parser.add_argument(
+        "--load-4bit",
+        dest="load_4bit",
+        action="store_true",
+        default=bool(config_defaults.get("load_4bit", False)),
+        help="Load in 4-bit (HF only)",
+    )
+    parser.add_argument("--no-load-4bit", dest="load_4bit", action="store_false", help="Disable 4-bit load")
+    parser.add_argument(
+        "--load-8bit",
+        dest="load_8bit",
+        action="store_true",
+        default=bool(config_defaults.get("load_8bit", False)),
+        help="Load in 8-bit (HF only)",
+    )
+    parser.add_argument("--no-load-8bit", dest="load_8bit", action="store_false", help="Disable 8-bit load")
 
     args = parser.parse_args()
+
+    if not args.model:
+        console.print("[red]Missing --model (or set model in --inference-config)[/red]")
+        sys.exit(2)
 
     # Detect model family
     model_family = args.model_family or detect_model_family(args.model)
@@ -727,6 +854,13 @@ Backends: vllm (throughput), sglang (latency), hf (compatibility), mlx (Mac)
                 "--port", str(args.port),
                 "--trust-remote-code",
             ]
+            cmd.extend(["--tensor-parallel-size", str(args.tensor_parallel)])
+            if args.dtype != "auto":
+                cmd.extend(["--dtype", args.dtype])
+            if args.max_model_len:
+                cmd.extend(["--max-model-len", str(args.max_model_len)])
+            if args.gpu_memory_utilization:
+                cmd.extend(["--gpu-memory-utilization", str(args.gpu_memory_utilization)])
             if args.adapter:
                 cmd.extend(["--enable-lora", "--lora-modules", f"default={args.adapter}"])
             subprocess.run(cmd)
@@ -739,6 +873,7 @@ Backends: vllm (throughput), sglang (latency), hf (compatibility), mlx (Mac)
                 "--port", str(args.port),
                 "--trust-remote-code",
             ]
+            cmd.extend(["--tp-size", str(args.tensor_parallel)])
             subprocess.run(cmd)
         else:
             console.print(f"[red]Server mode not supported for {args.backend}[/red]")
@@ -750,6 +885,9 @@ Backends: vllm (throughput), sglang (latency), hf (compatibility), mlx (Mac)
         args.model,
         adapter_path=args.adapter,
         tensor_parallel_size=args.tensor_parallel,
+        dtype=args.dtype,
+        max_model_len=args.max_model_len,
+        gpu_memory_utilization=args.gpu_memory_utilization,
         load_in_4bit=args.load_4bit,
         load_in_8bit=args.load_8bit,
     )
@@ -762,6 +900,7 @@ Backends: vllm (throughput), sglang (latency), hf (compatibility), mlx (Mac)
                 system_prompt=args.system_prompt,
                 max_tokens=args.max_tokens,
                 temperature=args.temperature,
+                top_p=args.top_p,
             )
         elif args.input:
             batch_inference(
@@ -772,6 +911,7 @@ Backends: vllm (throughput), sglang (latency), hf (compatibility), mlx (Mac)
                 system_prompt=args.system_prompt,
                 max_tokens=args.max_tokens,
                 temperature=args.temperature,
+                top_p=args.top_p,
             )
         else:
             console.print("[red]Specify --input, --interactive, or --serve[/red]")

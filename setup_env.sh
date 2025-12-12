@@ -7,26 +7,33 @@
 ENV_TYPE=${1:-mlx}
 USE_VENV=${2:-""}
 
+# Allow overriding Python version/binary; default to repo's .python-version (3.11).
+PYTHON_VERSION=${LLM_FT_PYTHON_VERSION:-$(cat .python-version 2>/dev/null || echo "3.11")}
+PYTHON_BIN=${LLM_FT_PYTHON_BIN:-python${PYTHON_VERSION}}
+if ! command -v "$PYTHON_BIN" &> /dev/null; then
+    PYTHON_BIN=${LLM_FT_PYTHON_BIN:-python3}
+fi
+
 # Detect package manager
 if command -v uv &> /dev/null && [ "$USE_VENV" != "--use-venv" ]; then
     PKG_MANAGER="uv"
-    echo "📦 Using uv package manager (faster)"
+    echo "Using uv package manager (faster)"
 else
     PKG_MANAGER="venv"
-    echo "📦 Using traditional venv"
+    echo "Using traditional venv"
 fi
 
 # Set environment name based on type
 if [ "$ENV_TYPE" = "mlx" ]; then
     ENV_NAME=".venv-mlx"
     REQ_FILE="requirements/requirements-mlx.txt"
-    echo "🍎 Setting up Mac MLX environment..."
+    echo "Setting up Mac MLX environment..."
 elif [ "$ENV_TYPE" = "gpu" ]; then
     ENV_NAME=".venv-gpu"
     REQ_FILE="requirements/requirements-gpu.txt"
-    echo "🖥️  Setting up Cloud GPU environment..."
+    echo "Setting up Cloud GPU environment..."
 else
-    echo "❌ Invalid environment type. Use: mlx or gpu"
+    echo "Invalid environment type. Use: mlx or gpu"
     return 1
 fi
 
@@ -35,7 +42,7 @@ if [ "$PKG_MANAGER" = "uv" ]; then
     # Using uv
     if [ ! -d "$ENV_NAME" ]; then
         echo "Creating virtual environment with uv..."
-        uv venv "$ENV_NAME" --python 3.11
+        uv venv "$ENV_NAME" --python "$PYTHON_VERSION"
     fi
     
     echo "Activating $ENV_NAME..."
@@ -48,7 +55,7 @@ else
     # Using traditional venv
     if [ ! -d "$ENV_NAME" ]; then
         echo "Creating virtual environment..."
-        python3.11 -m venv "$ENV_NAME"
+        "$PYTHON_BIN" -m venv "$ENV_NAME"
     fi
     
     echo "Activating $ENV_NAME..."
@@ -63,23 +70,23 @@ fi
 
 # Verify installation
 echo ""
-echo "✅ Environment setup complete!"
+echo "Environment setup complete!"
 echo "   Environment: $ENV_NAME"
 echo "   Python: $(python --version)"
 echo ""
 
 if [ "$ENV_TYPE" = "mlx" ]; then
     echo "Verifying MLX installation..."
-    python -c "import mlx; print(f'   MLX version: {mlx.__version__}')" 2>/dev/null || echo "   ⚠️  MLX not installed (expected on non-Mac)"
-    python -c "import mlx_lm; print(f'   mlx-lm available')" 2>/dev/null || echo "   ⚠️  mlx-lm not installed"
+    python -c "import mlx; print(f'   MLX version: {mlx.__version__}')" 2>/dev/null || echo "   Warning: MLX not installed (expected on non-Mac)"
+    python -c "import mlx_lm; print('   mlx-lm available')" 2>/dev/null || echo "   Warning: mlx-lm not installed"
 else
     echo "Verifying GPU packages..."
-    python -c "import torch; print(f'   PyTorch: {torch.__version__}')" 2>/dev/null || echo "   ⚠️  PyTorch not installed"
+    python -c "import torch; print(f'   PyTorch: {torch.__version__}')" 2>/dev/null || echo "   Warning: PyTorch not installed"
     python -c "import torch; print(f'   CUDA available: {torch.cuda.is_available()}')" 2>/dev/null || true
 fi
 
 echo ""
-echo "🎯 Next steps:"
+echo "Next steps:"
 if [ "$ENV_TYPE" = "mlx" ]; then
     echo "   1. Prepare data: python data/scripts/prepare_translation_data.py"
     echo "   2. Train: python scripts/mlx/train_sft.py --config configs/mlx/sft_korean_translation.yaml"

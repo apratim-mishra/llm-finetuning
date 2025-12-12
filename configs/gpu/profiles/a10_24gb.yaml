@@ -1,0 +1,27 @@
+# GPU profile: NVIDIA A10 24GB (balanced defaults)
+#
+# Apply with:
+#   python scripts/gpu/train_sft.py --config ... --profile configs/gpu/profiles/a10_24gb.yaml
+#
+# Notes:
+# - A10 is Ampere: bf16 + flash attention can work if installed; scripts fall back if missing.
+
+model:
+  torch_dtype: "bfloat16"
+  attn_implementation: "flash_attention_2"
+
+quantization:
+  enabled: true
+  bnb_4bit_compute_dtype: "bfloat16"
+
+training:
+  bf16: true
+  fp16: false
+  per_device_train_batch_size: 2
+  per_device_eval_batch_size: 2
+  gradient_accumulation_steps: 8
+  dataloader_num_workers: 4
+
+sft:
+  packing: true
+

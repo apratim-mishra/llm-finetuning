@@ -1,0 +1,12 @@
+# Evaluation preset: math reasoning (GSM8K-style)
+inference_config: configs/inference/math_vllm.yaml
+
+data:
+  test_file: data/processed/math/gsm8k_test.jsonl
+  max_samples: 200
+
+output_dir: outputs/eval/math
+
+reward_function: combined
+include_per_sample: false
+

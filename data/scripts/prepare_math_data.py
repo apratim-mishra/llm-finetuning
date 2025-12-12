@@ -5,8 +5,11 @@ Prepares data for SFT, DPO, and GRPO training stages.
 """
 
 import json
-import os
+import platform
 import re
+import sys
+from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -328,6 +331,61 @@ def prepare_math_data(use_subset: bool = True):
             "actual_preference_val": len(pref_val),
             "actual_grpo_prompts": len(grpo_prompts),
         }, f)
+
+    # Write manifest (hashes + dataset stats)
+    try:
+        from src.data.manifest import build_files_manifest, write_manifest
+
+        def _source_counts(items: list[dict]) -> dict[str, int]:
+            return dict(Counter(s.get("source", "unknown") for s in items))
+
+        manifest = {
+            "task": "math_reasoning",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "platform": {
+                "python": sys.version.split()[0],
+                "system": platform.system(),
+                "machine": platform.machine(),
+            },
+            "config": {
+                **DATA_CONFIG,
+                "use_subset": use_subset,
+            },
+            "counts": {
+                "raw": len(all_samples),
+                "filtered": len(filtered_samples),
+                "sft_train": len(sft_train_formatted),
+                "sft_val": len(sft_val_formatted),
+                "preference_train": len(pref_train),
+                "preference_val": len(pref_val),
+                "grpo_prompts": len(grpo_prompts),
+                "gsm8k_test": len(gsm8k_test_formatted),
+            },
+            "sources": {
+                "raw": _source_counts(all_samples),
+                "filtered": _source_counts(filtered_samples),
+            },
+            "preference_pairs": {
+                "type": "synthetic",
+                "note": "Use data/scripts/generate_math_preferences.py for model-generated preferences.",
+            },
+            "files": build_files_manifest(
+                {
+                    "sft_train.jsonl": output_dir / "sft_train.jsonl",
+                    "sft_val.jsonl": output_dir / "sft_val.jsonl",
+                    "preference_pairs.jsonl": output_dir / "preference_pairs.jsonl",
+                    "preference_pairs_val.jsonl": output_dir / "preference_pairs_val.jsonl",
+                    "grpo_prompts.jsonl": output_dir / "grpo_prompts.jsonl",
+                    "gsm8k_test.jsonl": output_dir / "gsm8k_test.jsonl",
+                    "data_config.yaml": config_path,
+                }
+            ),
+        }
+
+        write_manifest(output_dir / "manifest.json", manifest)
+        console.print(f"[green]Wrote manifest: {output_dir / 'manifest.json'}[/green]")
+    except Exception as e:
+        console.print(f"[yellow]Warning: could not write manifest.json: {e}[/yellow]")
     
     # Print summary
     console.print("\n[bold green]═══ Data Preparation Complete ═══[/bold green]")

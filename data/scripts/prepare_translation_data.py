@@ -7,13 +7,16 @@ Works on both Mac (MLX) and GPU environments.
 
 import json
 import os
+import platform
+import sys
+from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
-from datasets import load_dataset, concatenate_datasets
+from datasets import load_dataset
 from rich.console import Console
 from rich.progress import track
-from tqdm import tqdm
 
 console = Console()
 
@@ -240,6 +243,55 @@ def prepare_translation_data(
             "actual_val_size": len(val_formatted),
             "actual_test_size": len(test_formatted),
         }, f)
+
+    # Write manifest (hashes + dataset stats)
+    try:
+        from src.data.manifest import build_files_manifest, write_manifest
+
+        def _source_counts(items: list[dict]) -> dict[str, int]:
+            return dict(Counter(s.get("source", "unknown") for s in items))
+
+        manifest = {
+            "task": "korean_english_translation",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "platform": {
+                "python": sys.version.split()[0],
+                "system": platform.system(),
+                "machine": platform.machine(),
+            },
+            "config": {
+                **DATA_CONFIG,
+                "output_format": output_format,
+                "use_subset": use_subset,
+            },
+            "counts": {
+                "raw": len(all_samples),
+                "filtered": len(filtered_samples),
+                "train": len(train_formatted),
+                "val": len(val_formatted),
+                "test": len(test_formatted),
+            },
+            "sources": {
+                "raw": _source_counts(all_samples),
+                "filtered": _source_counts(filtered_samples),
+                "train": _source_counts(train_formatted),
+                "val": _source_counts(val_formatted),
+                "test": _source_counts(test_formatted),
+            },
+            "files": build_files_manifest(
+                {
+                    "train.jsonl": output_dir / "train.jsonl",
+                    "val.jsonl": output_dir / "val.jsonl",
+                    "test.jsonl": output_dir / "test.jsonl",
+                    "data_config.yaml": config_path,
+                }
+            ),
+        }
+
+        write_manifest(output_dir / "manifest.json", manifest)
+        console.print(f"[green]Wrote manifest: {output_dir / 'manifest.json'}[/green]")
+    except Exception as e:
+        console.print(f"[yellow]Warning: could not write manifest.json: {e}[/yellow]")
     
     # Print summary
     console.print("\n[bold green]═══ Data Preparation Complete ═══[/bold green]")

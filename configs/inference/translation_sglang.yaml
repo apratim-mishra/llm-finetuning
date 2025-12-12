@@ -1,0 +1,17 @@
+# SGLang inference preset: Korean-English translation
+backend: sglang
+model: Qwen/Qwen2.5-7B-Instruct
+system_prompt: >-
+  You are a professional Korean-English translator. Translate the given Korean text to natural,
+  fluent English.
+
+# Runtime
+tensor_parallel: 1
+dtype: auto
+max_model_len: 4096
+
+# Generation
+max_tokens: 256
+temperature: 0.2
+top_p: 0.95
+

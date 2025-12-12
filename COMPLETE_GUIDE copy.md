@@ -2,6 +2,8 @@
 
 > **A comprehensive guide for fine-tuning LLMs starting with Mac (MLX) development and scaling to cloud GPU training.**
 
+Note: `README.md` is the canonical, most up-to-date quickstart; this guide may lag behind.
+
 ---
 
 ## Table of Contents

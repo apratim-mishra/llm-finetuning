@@ -48,7 +48,7 @@ def compute_bleu(
     try:
         from sacrebleu.metrics import BLEU
 
-        bleu = BLEU(tokenize=tokenize, lowercase=lowercase)
+        bleu = BLEU(tokenize=tokenize, lowercase=lowercase, effective_order=True)
         result = bleu.corpus_score(predictions, references)
 
         return {
@@ -83,7 +83,7 @@ def compute_sentence_bleu(
     try:
         from sacrebleu.metrics import BLEU
 
-        bleu = BLEU(tokenize=tokenize)
+        bleu = BLEU(tokenize=tokenize, effective_order=True)
         result = bleu.sentence_score(prediction, references)
         return round(result.score, 2)
     except ImportError:
@@ -286,10 +286,11 @@ def clean_translation(text: str) -> str:
     if not text:
         return ""
 
-    # Remove ChatML tokens
-    text = re.sub(r"<\|im_start\|>.*?<\|im_end\|>", "", text, flags=re.DOTALL)
-    text = re.sub(r"<\|im_start\|>.*$", "", text, flags=re.DOTALL)
-    text = re.sub(r"<\|.*?\|>", "", text)
+    # Remove ChatML tokens while keeping the inner content
+    text = text.replace("<|im_end|>", "")
+    text = re.sub(r"<\|im_start\|>\s*(system|user|assistant)\s*\n", "", text)
+    text = text.replace("<|im_start|>", "")
+    text = re.sub(r"<\|[^>]*\|>", "", text)
 
     # Remove Llama tokens
     text = re.sub(r"\[INST\].*?\[/INST\]", "", text, flags=re.DOTALL)

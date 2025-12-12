@@ -31,6 +31,11 @@ from rich.panel import Panel
 
 console = Console()
 
+try:
+    import wandb  # type: ignore
+except Exception:  # pragma: no cover
+    wandb = None  # type: ignore
+
 
 def load_config(config_path: str) -> dict:
     """Load YAML configuration with environment variable expansion."""
@@ -47,6 +52,34 @@ def load_config(config_path: str) -> dict:
         return obj
 
     return expand_env(config)
+
+
+def init_wandb(config: dict) -> bool:
+    """Initialize Weights & Biases logging for MLX runs."""
+    logging_config = config.get("logging", {})
+    wandb_config = logging_config.get("wandb", {})
+
+    if not wandb_config or not wandb_config.get("enabled", False):
+        return False
+
+    if wandb is None:
+        console.print("[yellow]Warning: wandb not installed[/yellow]")
+        return False
+
+    run_name = wandb_config.get(
+        "run_name",
+        f"mlx-sft-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
+    )
+
+    wandb.init(
+        project=wandb_config.get("project", "mlx-training"),
+        name=run_name,
+        tags=wandb_config.get("tags", ["mlx", "sft"]),
+        config=config,
+        resume="allow",
+    )
+    console.print("[green]Wandb initialized[/green]")
+    return True
 
 
 def validate_data_format(filepath: str, max_samples: int = 5) -> bool:
@@ -135,33 +168,15 @@ def prepare_mlx_data(data_path: str, output_dir: str, val_path: Optional[str] = 
 def setup_logging(config: dict) -> dict:
     """Initialize Wandb and/or MLflow logging."""
     logging_status = {"wandb": False, "mlflow": False}
-    logging_config = config.get("logging", {})
 
     # Wandb setup
-    wandb_config = logging_config.get("wandb", {})
-    if wandb_config.get("enabled", False):
-        try:
-            import wandb
-
-            run_name = wandb_config.get(
-                "run_name",
-                f"mlx-sft-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-            )
-
-            wandb.init(
-                project=wandb_config.get("project", "mlx-training"),
-                name=run_name,
-                tags=wandb_config.get("tags", ["mlx", "sft"]),
-                config=config,
-            )
-            logging_status["wandb"] = True
-            console.print("[green]Wandb initialized[/green]")
-        except ImportError:
-            console.print("[yellow]Warning: wandb not installed[/yellow]")
-        except Exception as e:
-            console.print(f"[yellow]Warning: Could not init wandb: {e}[/yellow]")
+    try:
+        logging_status["wandb"] = init_wandb(config)
+    except Exception as e:
+        console.print(f"[yellow]Warning: Could not init wandb: {e}[/yellow]")
 
     # MLflow setup
+    logging_config = config.get("logging", {})
     mlflow_config = logging_config.get("mlflow", {})
     if mlflow_config.get("enabled", False):
         try:
@@ -400,7 +415,7 @@ Examples:
     python scripts/mlx/train_sft.py --config configs/mlx/sft_math_reasoning.yaml
 
     # With overrides
-    python scripts/mlx/train_sft.py --config configs/mlx/sft_config.yaml \\
+    python scripts/mlx/train_sft.py --config configs/mlx/sft_korean_translation.yaml \\
         --model mlx-community/Qwen2.5-7B-Instruct-4bit --iters 500
         """
     )

@@ -1,0 +1,17 @@
+# SGLang inference preset: math reasoning
+backend: sglang
+model: Qwen/Qwen2.5-7B-Instruct
+system_prompt: >-
+  You are a mathematical reasoning assistant. Solve problems step-by-step, showing all your work
+  clearly. Always end your solution with "Answer: [final numerical answer]".
+
+# Runtime
+tensor_parallel: 1
+dtype: auto
+max_model_len: 4096
+
+# Generation
+max_tokens: 512
+temperature: 0.1
+top_p: 0.95
+

@@ -1,0 +1,8 @@
+# ONNX export preset (best-effort)
+model: outputs/gpu/merged_models/translation_sft_merged
+output_dir: outputs/gpu/onnx/translation_sft
+
+# transformers.onnx feature name (decoder-only LLMs typically use "causal-lm")
+feature: causal-lm
+opset: 17
+
