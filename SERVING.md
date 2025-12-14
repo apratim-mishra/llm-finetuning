@@ -32,6 +32,8 @@ The unified script supports `--inference-config`:
 
 You can still override any CLI flag after the config.
 
+Note: these presets are for `scripts/gpu/inference_unified.py` (text-only). For multimodal VLM inference (VQA-RAD), use `scripts/gpu/inference_vlm.py` with `configs/inference/medical_vqa_hf.yaml`.
+
 ## vLLM (OpenAI-compatible server)
 
 Single GPU:
@@ -67,3 +69,11 @@ Batch:
 Interactive:
 - `python scripts/gpu/inference_unified.py --inference-config configs/inference/mlx_local.yaml`
 
+## Vision-Language Models (VLM)
+
+This repo includes a separate multimodal inference script for image+text → text tasks:
+
+- GPU / HuggingFace VLM:
+  - `python scripts/gpu/inference_vlm.py --inference-config configs/inference/medical_vqa_hf.yaml`
+- Mac / MLX-VLM (requires `mlx-vlm`):
+  - `python scripts/mlx/inference_vlm.py --model mlx-community/Qwen2-VL-2B-Instruct-4bit --input data/processed/medical_vqa/test.jsonl --output outputs/eval/medical_vqa/predictions_mlx.jsonl`

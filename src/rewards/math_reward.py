@@ -390,6 +390,133 @@ def combined_math_reward(
     return combined
 
 
+def _extract_reasoning_steps(text: str) -> List[str]:
+    """
+    Extract individual reasoning steps from a solution.
+
+    Splits on common step markers like "Step 1:", numbered lists,
+    or transition words like "First,", "Then,", etc.
+
+    Args:
+        text: Full solution text
+
+    Returns:
+        List of individual step strings
+    """
+    if not text:
+        return []
+
+    # Try numbered steps first (Step 1:, 1., etc.)
+    step_pattern = r"(?:Step\s*\d+[:\.]?|^\d+[.\)]\s*)"
+    parts = re.split(step_pattern, text, flags=re.MULTILINE | re.IGNORECASE)
+    parts = [p.strip() for p in parts if p.strip()]
+
+    if len(parts) > 1:
+        return parts
+
+    # Try transition words
+    transition_pattern = r"(?:First(?:ly)?[,:\s]|Second(?:ly)?[,:\s]|Third(?:ly)?[,:\s]|Then[,:\s]|Next[,:\s]|Finally[,:\s]|Therefore[,:\s]|Thus[,:\s])"
+    parts = re.split(transition_pattern, text, flags=re.IGNORECASE)
+    parts = [p.strip() for p in parts if p.strip()]
+
+    if len(parts) > 1:
+        return parts
+
+    # Fall back to sentence splitting for shorter texts
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    return [s.strip() for s in sentences if s.strip() and len(s.split()) > 3]
+
+
+def _score_step(step: str) -> float:
+    """
+    Score a single reasoning step (0-1).
+
+    Evaluates:
+    - Mathematical operations present
+    - Logical conclusion/result
+    - Appropriate length
+
+    Args:
+        step: Single reasoning step text
+
+    Returns:
+        Score between 0 and 1
+    """
+    if not step:
+        return 0.0
+
+    score = 0.0
+    words = step.split()
+
+    # Has mathematical operation (+, -, *, /, =)
+    if re.search(r"\d+\s*[+\-*/×÷]\s*\d+", step):
+        score += 0.4
+
+    # Has equation or result (= some number)
+    if re.search(r"(?:=|equals|is)\s*[+-]?\d+\.?\d*", step, re.IGNORECASE):
+        score += 0.3
+
+    # Has intermediate conclusion
+    if re.search(r"(?:so|therefore|thus|hence|we get|this gives)", step, re.IGNORECASE):
+        score += 0.1
+
+    # Appropriate length (not too short, not too long)
+    if 5 < len(words) < 60:
+        score += 0.2
+    elif len(words) >= 3:
+        score += 0.1
+
+    return min(score, 1.0)
+
+
+def step_level_reward(
+    completions: List[str],
+    ground_truths: List[str],
+    prompts: Optional[List[str]] = None,
+    answer_weight: float = 0.7,
+    step_weight: float = 0.3,
+) -> List[float]:
+    """
+    Process Reward Model (PRM) style scoring.
+
+    Scores both the final answer AND intermediate reasoning steps,
+    providing more granular feedback than outcome-only rewards.
+
+    This is similar to Math-Shepherd style verification where each
+    step is evaluated independently.
+
+    Args:
+        completions: Model-generated solutions
+        ground_truths: Correct answers
+        prompts: Original prompts (optional)
+        answer_weight: Weight for final answer correctness (default 0.7)
+        step_weight: Weight for step-by-step reasoning (default 0.3)
+
+    Returns:
+        List of reward values combining answer and step scores
+    """
+    rewards = []
+
+    for completion, gt in zip(completions, ground_truths):
+        # Score final answer (binary)
+        predicted = extract_answer(completion)
+        answer_correct = 1.0 if answers_match(predicted, gt) else 0.0
+
+        # Score reasoning steps
+        steps = _extract_reasoning_steps(completion)
+        if steps:
+            step_scores = [_score_step(s) for s in steps]
+            avg_step_score = sum(step_scores) / len(step_scores)
+        else:
+            avg_step_score = 0.0
+
+        # Combine scores
+        reward = answer_weight * answer_correct + step_weight * avg_step_score
+        rewards.append(reward)
+
+    return rewards
+
+
 def get_reward_function(name: str) -> Callable:
     """
     Get a reward function by name.
@@ -405,6 +532,8 @@ def get_reward_function(name: str) -> Callable:
         - "binary": math_binary_reward (strict 0/1)
         - "format": math_format_reward
         - "combined": combined_math_reward
+        - "step_level": step_level_reward (PRM-style step scoring)
+        - "prm": step_level_reward (alias)
     """
     functions = {
         "accuracy": math_accuracy_reward,
@@ -415,6 +544,9 @@ def get_reward_function(name: str) -> Callable:
         "math_format_reward": math_format_reward,
         "combined": combined_math_reward,
         "combined_math_reward": combined_math_reward,
+        "step_level": step_level_reward,
+        "step_level_reward": step_level_reward,
+        "prm": step_level_reward,
     }
 
     if name not in functions:

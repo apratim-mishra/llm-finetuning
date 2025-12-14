@@ -1,0 +1,9 @@
+# Evaluation preset: Medical VQA (VQA-RAD)
+inference_config: configs/inference/medical_vqa_hf.yaml
+
+data:
+  test_file: data/processed/medical_vqa/test.jsonl
+  max_samples: 200
+
+output_dir: outputs/eval/medical_vqa
+

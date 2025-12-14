@@ -1,0 +1,21 @@
+# HuggingFace inference preset: Medical VQA (VQA-RAD) with a VLM
+backend: hf
+model: Qwen/Qwen2-VL-7B-Instruct
+
+# Optional: LoRA adapter
+# adapter: outputs/gpu/checkpoints/medical_vqa_sft/final
+
+io:
+  input: data/processed/medical_vqa/test.jsonl
+  output: outputs/eval/medical_vqa/predictions.jsonl
+
+runtime:
+  dtype: auto
+  load_4bit: false
+  load_8bit: false
+
+generation:
+  max_tokens: 64
+  temperature: 0.2
+  top_p: 0.95
+

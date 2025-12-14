@@ -1,0 +1,83 @@
+# =============================================================================
+# GPU KTO Configuration - Kahneman-Tversky Optimization
+# Framework: TRL KTOTrainer
+# Advantage: Works with unpaired data, asymmetric loss for risk-sensitive domains
+# =============================================================================
+
+# Model Settings
+model:
+  name: "Qwen/Qwen3-8B"
+  adapter: "outputs/gpu/checkpoints/math_sft/final" # Recommended: start from SFT
+  torch_dtype: "bfloat16"
+  attn_implementation: "flash_attention_2"
+  device_map: "auto"
+
+# Quantization
+quantization:
+  enabled: true
+  load_in_4bit: true
+  bnb_4bit_compute_dtype: "bfloat16"
+  bnb_4bit_quant_type: "nf4"
+
+# LoRA
+lora:
+  r: 64
+  lora_alpha: 128
+  lora_dropout: 0.05
+  target_modules: "all-linear"
+  bias: "none"
+
+# KTO Specific Settings
+kto:
+  beta: 0.1 # KL divergence weight
+  desirable_weight: 1.0 # Weight for positive samples
+  undesirable_weight: 1.0 # Weight for negative samples (increase for safety)
+  max_length: 2048
+  max_prompt_length: 1024
+
+# Training Arguments
+training:
+  output_dir: "outputs/gpu/checkpoints/kto"
+  num_train_epochs: 1
+  per_device_train_batch_size: 2
+  per_device_eval_batch_size: 2
+  gradient_accumulation_steps: 8
+  learning_rate: 5.0e-7 # Similar to DPO
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.1
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+
+  # Precision
+  bf16: true
+  gradient_checkpointing: true
+  gradient_checkpointing_kwargs:
+    use_reentrant: false
+
+  # Evaluation
+  eval_strategy: "steps"
+  eval_steps: 100
+
+  # Logging
+  logging_steps: 10
+  report_to: "wandb"
+
+  # Checkpointing
+  save_strategy: "steps"
+  save_steps: 100
+  save_total_limit: 3
+
+  seed: 42
+
+# Data (KTO format or DPO format)
+data:
+  train_file: "data/processed/math/preference_pairs.jsonl"
+  val_file: "data/processed/math/preference_pairs_val.jsonl"
+  # KTO format: {"prompt": "...", "completion": "...", "label": true/false}
+  # Also accepts DPO format: {"prompt": "...", "chosen": "...", "rejected": "..."}
+
+# Wandb
+wandb:
+  project: "math-reasoning-gpu"
+  run_name: "qwen3-8b-kto-math"
+  tags: ["kto", "math", "preference"]

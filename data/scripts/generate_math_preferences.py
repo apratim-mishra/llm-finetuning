@@ -13,6 +13,24 @@ Inputs:
 Outputs (by default):
 - `data/processed/math/preference_pairs.jsonl`
 - `data/processed/math/preference_pairs_val.jsonl`
+
+Generation Efficiency:
+- vLLM uses `SamplingParams(n=k)` to generate k candidates per prompt in ONE call
+- This is much faster than sequential generation (batched GPU inference)
+- SGLang similarly batches n generations efficiently
+
+Provenance Tracking:
+- Each output pair includes full metadata in the "meta" field:
+  - model_id, adapter, sampling_params (temperature, top_p, n, max_new_tokens)
+  - reward_function, chosen_reward, rejected_reward, reward_gap
+  - timestamp, seed
+- This enables reproducibility and lineage tracking for DPO experiments
+
+Reward Functions Available (--reward-function):
+- accuracy: Partial credit for good reasoning even with wrong answer
+- binary: Strict 0/1 for correct/incorrect
+- combined: Accuracy + format + reasoning quality
+- step_level/prm: Process Reward Model style (scores intermediate steps)
 """
 
 from __future__ import annotations
@@ -22,6 +40,7 @@ import json
 import random
 import sys
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -446,16 +465,25 @@ def main() -> None:
             skipped += 1
             continue
 
-        pairs.append(
-            to_dpo_json(
-                pair,
-                meta={
-                    "reward_function": args.reward_function,
-                    "chosen_reward": pair.chosen_reward,
-                    "rejected_reward": pair.rejected_reward,
-                },
-            )
-        )
+        # Full provenance metadata for reproducibility
+        provenance_meta = {
+            "model_id": args.model or "precomputed_candidates",
+            "adapter": args.adapter,
+            "sampling_params": {
+                "temperature": args.temperature,
+                "top_p": args.top_p,
+                "n": args.num_generations,
+                "max_new_tokens": args.max_new_tokens,
+            },
+            "reward_function": args.reward_function,
+            "chosen_reward": pair.chosen_reward,
+            "rejected_reward": pair.rejected_reward,
+            "reward_gap": pair.chosen_reward - pair.rejected_reward,
+            "min_reward_gap": args.min_reward_gap,
+            "timestamp": datetime.now().isoformat(),
+            "seed": args.seed,
+        }
+        pairs.append(to_dpo_json(pair, meta=provenance_meta))
 
     console.print(f"[green]Built {len(pairs)} preference pairs (skipped: {skipped})[/green]")
 

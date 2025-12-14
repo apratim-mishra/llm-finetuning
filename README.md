@@ -6,6 +6,7 @@ A complete pipeline for fine-tuning LLMs, starting with local Mac (MLX) prototyp
 
 1. **Korean-English Translation** - SFT fine-tuning for translation
 2. **Math Reasoning** - Full pipeline: SFT → DPO → GRPO
+3. **Medical VQA (VQA-RAD)** - Vision-language SFT (image + question → answer)
 
 ## Quick Start
 
@@ -27,6 +28,7 @@ chmod +x setup_project.sh
 ### 2. Setup Environment
 
 **Mac (MLX):**
+
 ```bash
 source setup_env.sh mlx
 # Or with traditional venv:
@@ -34,6 +36,7 @@ source setup_env.sh mlx --use-venv
 ```
 
 **Cloud GPU:**
+
 ```bash
 source setup_env.sh gpu
 ```
@@ -42,11 +45,13 @@ source setup_env.sh gpu
 
 Use this when you just want to chat with a model or sanity-check prompts before training.
 
-1) Pick environment
+1. Pick environment
+
 - Mac (MLX): `source setup_env.sh mlx` (Metal, 4-bit models)
 - Cloud GPU: `source setup_env.sh gpu` (PyTorch/TRL, CUDA)
 
-2) Pick backend + model
+2. Pick backend + model
+
 - Mac MLX interactive (fast startup):  
   `python scripts/gpu/inference_unified.py --backend mlx --model mlx-community/Qwen2.5-7B-Instruct-4bit --interactive --max-tokens 256 --temperature 0.2`
 - GPU vLLM interactive (best throughput):  
@@ -55,10 +60,10 @@ Use this when you just want to chat with a model or sanity-check prompts before 
   `python scripts/gpu/inference_unified.py --backend hf --model Qwen/Qwen2.5-7B-Instruct --load-4bit --interactive`
 - Add `--system-prompt`, `--adapter outputs/.../sft/final`, `--input data/processed/test.jsonl --output outputs/predictions.jsonl`, or `--serve --port 8000` to match your use case.
 
-| Target | Suggested models | Notes |
-|--------|------------------|-------|
-| Mac (MLX) | mlx-community/Qwen2.5-7B-Instruct-4bit, mlx-community/Llama-3.2-3B-Instruct | Runs in 4-bit, best for quick prompt tests |
-| Cloud GPU | Qwen/Qwen2.5-7B-Instruct, meta-llama/Llama-3.1-8B-Instruct | Use `--tensor-parallel` for multi-GPU vLLM |
+| Target    | Suggested models                                                       | Notes                                      |
+| --------- | ---------------------------------------------------------------------- | ------------------------------------------ |
+| Mac (MLX) | mlx-community/Qwen3-8B-Instruct-4bit, mlx-community/gemma-3-4b-it-4bit | Runs in 4-bit, best for quick prompt tests |
+| Cloud GPU | Qwen/Qwen3-8B, google/gemma-3-12b-it                                   | Use `--tensor-parallel` for multi-GPU vLLM |
 
 ### MLX Inference (uv) - Step by Step
 
@@ -99,6 +104,7 @@ python scripts/gpu/inference_unified.py \
 ```
 
 **Tunable parameters (MLX backend):**
+
 - `--max-tokens` (new tokens per response)
 - `--temperature` (0 = deterministic; >0 enables sampling)
 - `--system-prompt` (prepends system message)
@@ -112,6 +118,9 @@ python data/scripts/prepare_translation_data.py
 
 # Math reasoning
 python data/scripts/prepare_math_data.py
+
+# Medical VQA (VQA-RAD) - check dataset license/terms before using
+python data/scripts/prepare_medical_vqa_data.py
 ```
 
 ### 4. Train (Mac/MLX)
@@ -122,6 +131,9 @@ python scripts/mlx/train_sft.py --config configs/mlx/sft_korean_translation.yaml
 
 # Math
 python scripts/mlx/train_sft.py --config configs/mlx/sft_math_reasoning.yaml
+
+# Medical VQA (VLM via mlx-vlm)
+python scripts/mlx/train_vlm_sft.py --config configs/mlx/vlm_medical_vqa.yaml
 ```
 
 ### 5. Train (Cloud GPU)
@@ -150,6 +162,9 @@ accelerate launch --config_file configs/gpu/fsdp/accelerate_fsdp.yaml \
 # Optional: apply a hardware profile (batch sizes, dtype, attention defaults)
 python scripts/gpu/train_sft.py --config configs/gpu/sft_config.yaml \
     --profile configs/gpu/profiles/a10_24gb.yaml
+
+# Medical VQA (VLM SFT)
+python scripts/gpu/train_vlm_sft.py --config configs/gpu/sft_medical_vqa_vlm.yaml
 ```
 
 ### 6. Inference
@@ -157,6 +172,8 @@ python scripts/gpu/train_sft.py --config configs/gpu/sft_config.yaml \
 The unified inference script supports multiple backends and model families:
 
 Tip: use `--inference-config configs/inference/*.yaml` for reproducible presets, and see `SERVING.md` for vLLM/SGLang server + multi-GPU notes.
+
+Note: `scripts/gpu/inference_unified.py` is text-only. For multimodal VLM inference, use `scripts/gpu/inference_vlm.py` (GPU/HF) or `scripts/mlx/inference_vlm.py` (Mac/MLX-VLM).
 
 ```bash
 # Qwen model with vLLM (high throughput)
@@ -182,6 +199,9 @@ python scripts/gpu/inference_unified.py --model Qwen/Qwen2.5-7B-Instruct \
 # Start API server (vLLM or SGLang)
 python scripts/gpu/inference_unified.py --model Qwen/Qwen2.5-7B-Instruct \
     --backend vllm --serve --port 8000
+
+# Medical VQA (VQA-RAD) - GPU/HF VLM inference
+python scripts/gpu/inference_vlm.py --inference-config configs/inference/medical_vqa_hf.yaml
 ```
 
 **Supported Backends:**
@@ -204,6 +224,10 @@ python scripts/mlx/evaluate.py --task math --adapter outputs/mlx/adapters/math_r
 # Task-level eval (GPU inference + custom metrics)
 make eval-translation
 make eval-math
+make eval-medical-vqa
+
+# Medical VQA (MLX-VLM inference + metrics)
+make eval-mlx-medical-vqa
 
 # GPU - LM Evaluation Harness
 python scripts/gpu/evaluate_lm_harness.py --model outputs/gpu/checkpoints/sft/final \
@@ -226,6 +250,7 @@ Use this when you want a single deployable artifact (no adapter dependency) or t
 # Merge LoRA adapter into base model (writes outputs/gpu/merged_models/*)
 make export-merge-translation
 make export-merge-math
+make export-merge-medical-vqa
 
 # Export merged model to ONNX (best-effort)
 make export-onnx
@@ -241,6 +266,7 @@ Only needed if you want your own automation around provisioning/SSH (this repo d
 Provision a GPU VM/container, then run `source setup_env.sh gpu` on that machine and use the same `scripts/gpu/*` commands.
 
 **Cloud GPU bootstrap checklist (AWS/Lambda):**
+
 - Ensure `nvidia-smi` works on the box (drivers installed) before installing Python deps.
 - Prefer Ampere+ GPUs (A10/A100/H100) if you want `flash_attention_2` and best vLLM support.
 - If you use a T4/older GPU, set `attn_implementation: eager` and `bf16: false` in GPU configs.
@@ -250,6 +276,7 @@ Provision a GPU VM/container, then run `source setup_env.sh gpu` on that machine
 ### Completed Steps
 
 **Step 0:** Enhanced `src/data/data_loader.py`
+
 - `load_jsonl()`, `save_jsonl()`, `stream_jsonl()` utilities
 - `load_train_val_test_data()` with automatic splits
 - Format support: ChatML, instruction, Llama, Alpaca via `get_formatting_func()`
@@ -258,6 +285,7 @@ Provision a GPU VM/container, then run `source setup_env.sh gpu` on that machine
 - `filter_by_length()` and `deduplicate_dataset()` for data cleaning
 
 **Step 1:** Enhanced `src/evaluation/translation_metrics.py`
+
 - `TranslationMetrics` dataclass for structured results
 - `compute_sentence_bleu()` for sentence-level BLEU
 - BLEU, chrF, TER, COMET metrics with error handling
@@ -265,6 +293,7 @@ Provision a GPU VM/container, then run `source setup_env.sh gpu` on that machine
 - `compute_length_ratio()` for translation length analysis
 
 **Step 2:** Enhanced `src/rewards/math_reward.py`
+
 - `RewardResult` dataclass for structured rewards
 - Answer extraction: fractions, percentages, currency, LaTeX boxed
 - `answers_match()` with absolute and relative tolerance
@@ -272,22 +301,26 @@ Provision a GPU VM/container, then run `source setup_env.sh gpu` on that machine
 - `evaluate_math_batch()` for comprehensive batch evaluation
 
 **Step 3:** Improved `scripts/gpu/train_sft.py`
+
 - Environment variable expansion, flash attention fallback
 - DeepSpeed/FSDP detection for device_map handling
 - `SFTConfig` from TRL, Wandb/MLflow logging, resume support
 
 **Step 4:** Improved `scripts/gpu/train_dpo.py`
+
 - `DPOConfig` with preference pair support
 - Preference pair validation, beta/loss type configuration
 - Wandb/MLflow logging, DeepSpeed/FSDP support
 
 **Step 5:** Improved `scripts/gpu/train_grpo.py`
+
 - `GRPOConfig` with online RL parameters
 - Integration with `src/rewards/math_reward.py`
 - Wandb/MLflow logging, DeepSpeed/FSDP support
 - Custom reward function wrapper for TRL
 
 **Step 6:** Added comprehensive test suite
+
 - `tests/conftest.py`: Pytest fixtures and configuration
 - `tests/test_data_loader.py`: Data loading utilities tests
 - `tests/test_math_reward.py`: Reward functions tests
@@ -295,6 +328,7 @@ Provision a GPU VM/container, then run `source setup_env.sh gpu` on that machine
 - `tests/test_mlx_training.py`: MLX script tests with mocking
 
 **Step 7:** Added `scripts/gpu/inference_unified.py`
+
 - Multi-backend support: vLLM (throughput), SGLang (latency), HuggingFace (compatibility), MLX (Mac)
 - Auto-detection of model families: Qwen, Llama, Mistral, Phi, Gemma
 - Chat template formatting per model family
@@ -304,37 +338,44 @@ Provision a GPU VM/container, then run `source setup_env.sh gpu` on that machine
 - OpenAI-compatible API server mode (vLLM/SGLang)
 
 **Step 8:** Added `scripts/gpu/evaluate_lm_harness.py`
+
 - Integration with EleutherAI lm-evaluation-harness
 - Standard benchmarks: GSM8K, ARC, HellaSwag, MMLU
 - Custom translation/math evaluation via `src/` modules
 - Results logging to Wandb/MLflow
 
 **Step 9:** Improved `scripts/mlx/train_sft.py`
+
 - Environment variable expansion in config
 - Wandb/MLflow logging support
 - Data validation using `src/data/data_loader.py`
 - Automatic validation file detection
 
 **Step 10:** Updated requirements files
+
 - Added MLflow, pytest-cov to base requirements
 - Added vLLM to GPU requirements
 - Updated TRL version for GRPO support
 
 **Step 11:** Added GPU hardware profiles + config merge
+
 - `configs/gpu/profiles/*` (A10/T4/A100/H100 presets)
 - `--profile` support for `scripts/gpu/train_{sft,dpo,grpo}.py`
 - `src/training/config_utils.py` for safe YAML merges
 
 **Step 12:** Added task-level evaluation entrypoints
+
 - `scripts/eval/eval_translation.py` + `configs/evaluation/translation.yaml`
 - `scripts/eval/eval_math.py` + `configs/evaluation/math.yaml`
 - `make eval-translation` / `make eval-math` for one-command eval
 
 **Step 13:** Added dataset manifests + preference-pair generation
+
 - `src/data/manifest.py` and `manifest.json` outputs from `data/scripts/prepare_*.py`
 - `data/scripts/generate_math_preferences.py` + `src/data/preferences.py` (reward-based DPO pairs)
 
 **Step 14:** Added serving + export utilities
+
 - `configs/inference/*` presets + `--inference-config` support
 - `SERVING.md` (vLLM/SGLang server + multi-GPU notes)
 - `scripts/gpu/merge_lora.py` + Make targets for merged deploy artifacts
@@ -342,6 +383,7 @@ Provision a GPU VM/container, then run `source setup_env.sh gpu` on that machine
 - `scripts/export/export_tensorrt_llm.md` (runbook)
 
 **Step 15:** Added CPU-only pipeline smoke tests
+
 - `tests/test_pipeline_smoke.py` validates new plumbing without GPUs/network
 
 ## Project Structure
@@ -380,24 +422,26 @@ llm-finetuning/
 
 ## Environment Differences
 
-| Aspect | Mac (MLX) | Cloud GPU |
-|--------|-----------|-----------|
-| Framework | mlx, mlx-lm | torch, transformers, trl |
-| Quantization | MLX 4-bit | bitsandbytes (QLoRA) |
-| Trainer | mlx_lm.lora CLI | TRL (SFTTrainer, DPOTrainer, GRPOTrainer) |
-| DPO/GRPO | ❌ Not supported | ✅ Full support |
-| Multi-GPU | ❌ Single device | ✅ DeepSpeed, FSDP |
-| Batch Size | 1-2 (memory limited) | 4-16+ |
+| Aspect       | Mac (MLX)            | Cloud GPU                                 |
+| ------------ | -------------------- | ----------------------------------------- |
+| Framework    | mlx, mlx-lm          | torch, transformers, trl                  |
+| Quantization | MLX 4-bit            | bitsandbytes (QLoRA)                      |
+| Trainer      | mlx_lm.lora CLI      | TRL (SFTTrainer, DPOTrainer, GRPOTrainer) |
+| DPO/GRPO     | ❌ Not supported     | ✅ Full support                           |
+| Multi-GPU    | ❌ Single device     | ✅ DeepSpeed, FSDP                        |
+| Batch Size   | 1-2 (memory limited) | 4-16+                                     |
 
 ## Mac (24GB) Capabilities
 
 ✅ **Can Do:**
+
 - Dataset preparation & validation
 - SFT LoRA training (7B 4-bit models)
 - Evaluation (BLEU, accuracy)
 - Inference testing
 
 ❌ **Cannot Do:**
+
 - DPO/GRPO (requires 2x memory)
 - Full fine-tuning (7B+)
 - Multi-GPU training
@@ -453,18 +497,82 @@ mlflow:
   experiment_name: "llm-finetuning"
 ```
 
+## Supported Models
+
+### MLX (Mac Apple Silicon - 24GB)
+
+| Model        | HuggingFace ID                             | VRAM | Notes                  |
+| ------------ | ------------------------------------------ | ---- | ---------------------- |
+| Qwen3-8B     | `mlx-community/Qwen3-8B-Instruct-4bit`     | ~5GB | Latest, best reasoning |
+| Qwen3-4B     | `mlx-community/Qwen3-4B-Instruct-4bit`     | ~3GB | Fast iteration         |
+| Gemma-3-4B   | `mlx-community/gemma-3-4b-it-4bit`         | ~3GB | Multimodal capable     |
+| Gemma-3-12B  | `mlx-community/gemma-3-12b-it-4bit`        | ~7GB | Higher quality         |
+| Llama-3.3-8B | `mlx-community/Llama-3.3-8B-Instruct-4bit` | ~5GB | Strong baseline        |
+| Qwen2.5-7B   | `mlx-community/Qwen2.5-7B-Instruct-4bit`   | ~5GB | Stable, well-tested    |
+
+### GPU (NVIDIA Cloud)
+
+| Model         | HuggingFace ID                      | VRAM (QLoRA) | Notes                    |
+| ------------- | ----------------------------------- | ------------ | ------------------------ |
+| Qwen3-8B      | `Qwen/Qwen3-8B`                     | 16GB         | Latest Qwen, recommended |
+| Qwen3-4B      | `Qwen/Qwen3-4B`                     | 10GB         | Fast training            |
+| Qwen3-14B     | `Qwen/Qwen3-14B`                    | 24GB         | Higher quality           |
+| Gemma-3-4B    | `google/gemma-3-4b-it`              | 10GB         | Multimodal               |
+| Gemma-3-12B   | `google/gemma-3-12b-it`             | 24GB         | Better quality           |
+| Gemma-3-27B   | `google/gemma-3-27b-it`             | 48GB         | Best Gemma               |
+| Llama-3.3-70B | `meta-llama/Llama-3.3-70B-Instruct` | Multi-GPU    | Best open model          |
+
+### VLM (Vision-Language)
+
+Used by Use Case 3 (Medical VQA, VQA-RAD).
+
+| Target    | HuggingFace ID                            | VRAM   | Notes                              |
+| --------- | ----------------------------------------- | ------ | ---------------------------------- |
+| Mac (MLX) | `mlx-community/Qwen3-VL-4B-Instruct-4bit` | ~3GB   | Requires `mlx-vlm >= 0.2.0`        |
+| Mac (MLX) | `mlx-community/Qwen3-VL-8B-Instruct-4bit` | ~5GB   | Higher quality                     |
+| Cloud GPU | `Qwen/Qwen3-VL-8B-Instruct`               | 16GB   | Best for training (recommended)    |
+| Cloud GPU | `Qwen/Qwen3-VL-4B-Instruct`               | 10GB   | Faster iteration                   |
+
+## Preference Optimization Methods
+
+| Method    | Best For                       | Command                             | Config                          |
+| --------- | ------------------------------ | ----------------------------------- | ------------------------------- |
+| **DPO**   | General preference alignment   | `python scripts/gpu/train_dpo.py`   | `configs/gpu/dpo_config.yaml`   |
+| **SimPO** | Noisy data, stable training    | `python scripts/gpu/train_simpo.py` | `configs/gpu/simpo_config.yaml` |
+| **ORPO**  | SFT + preference combined      | `python scripts/gpu/train_orpo.py`  | `configs/gpu/orpo_config.yaml`  |
+| **KTO**   | Unpaired data, safety-critical | `python scripts/gpu/train_kto.py`   | `configs/gpu/kto_config.yaml`   |
+| **GRPO**  | Verifiable rewards (math)      | `python scripts/gpu/train_grpo.py`  | `configs/gpu/grpo_config.yaml`  |
+
+**When to use each:**
+
+- **DPO**: Standard preference learning with paired chosen/rejected data
+- **SimPO**: When you have noisy crowd-sourced preferences (no reference model needed)
+- **ORPO**: Single-stage training from base model (combines SFT + preference)
+- **KTO**: When you only have thumbs-up/down labels (unpaired), or safety is critical
+- **GRPO**: Math/code tasks where answers are verifiable (online RL with rewards)
+
+## Evaluation Benchmarks
+
+| Category          | Benchmarks                             | Command                        |
+| ----------------- | -------------------------------------- | ------------------------------ |
+| **Math**          | GSM8K, MATH, MathQA, ASDiv             | `--tasks gsm8k,hendrycks_math` |
+| **Math Advanced** | AIME 2024, AMC 2023                    | `--tasks aime_2024,amc_2023`   |
+| **Reasoning**     | ARC, HellaSwag, Winogrande, LogiQA     | `--tasks arc_challenge,logiqa` |
+| **Knowledge**     | MMLU, TriviaQA                         | `--tasks mmlu`                 |
+| **Translation**   | BLEU, chrF, TER, COMET, xCOMET, BLEURT | `--custom-eval translation`    |
+
 ## Key Features
 
-| Feature | Description |
-|---------|-------------|
-| **MLX Training** | LoRA fine-tuning on Mac Apple Silicon |
-| **GPU Training** | SFT, DPO, GRPO with TRL |
-| **Distributed** | DeepSpeed ZeRO, FSDP support |
-| **Quantization** | QLoRA (4-bit), MLX 4-bit |
-| **Inference** | Multi-backend: vLLM, SGLang, HuggingFace, MLX |
-| **Model Support** | Qwen, Llama, Mistral, Phi, Gemma families |
-| **Evaluation** | lm-evaluation-harness, custom metrics |
-| **Logging** | Wandb, MLflow, TensorBoard |
+| Feature           | Description                                          |
+| ----------------- | ---------------------------------------------------- |
+| **MLX Training**  | LoRA fine-tuning on Mac Apple Silicon                |
+| **GPU Training**  | SFT, DPO, SimPO, ORPO, KTO, GRPO with TRL            |
+| **Distributed**   | DeepSpeed ZeRO, FSDP support                         |
+| **Quantization**  | QLoRA (4-bit), MLX 4-bit                             |
+| **Inference**     | Multi-backend: vLLM, SGLang, HuggingFace, MLX        |
+| **Model Support** | Qwen3, Gemma3, Llama3.3, and legacy models           |
+| **Evaluation**    | lm-evaluation-harness, COMET, BLEURT, custom metrics |
+| **Logging**       | Wandb, MLflow, TensorBoard                           |
 
 ## Next Steps (Roadmap)
 

@@ -125,18 +125,42 @@ def test_eval_math_metrics_binary_reward(temp_dir: Path, sample_math_jsonl: Path
     from scripts.eval.eval_math import evaluate_predictions
 
     predictions_path = temp_dir / "math_preds.jsonl"
-    with open(sample_math_jsonl, "r", encoding="utf-8") as fin, open(
-        predictions_path, "w", encoding="utf-8"
-    ) as fout:
+    with (
+        open(sample_math_jsonl, encoding="utf-8") as fin,
+        open(predictions_path, "w", encoding="utf-8") as fout,
+    ):
         for line in fin:
             item = json.loads(line)
             fout.write(json.dumps({**item, "generated": f"Answer: {item['answer']}"}) + "\n")
 
-    results = evaluate_predictions(predictions_path, reward_function="binary", include_per_sample=True)
+    results = evaluate_predictions(
+        predictions_path, reward_function="binary", include_per_sample=True
+    )
     assert results["accuracy"] == 1.0
     assert results["correct"] == results["total"]
     assert results["max_reward"] == 1.0
     assert len(results["results"]) == results["total"]
+
+
+def test_eval_medical_vqa_metrics(temp_dir: Path):
+    from scripts.eval.eval_medical_vqa import evaluate_predictions
+
+    predictions_path = temp_dir / "vqa_preds.jsonl"
+    rows = [
+        {"id": "1", "answer": "yes", "generated": "Yes."},
+        {"id": "2", "answer": "no", "generated": "maybe"},
+        {"id": "3", "answer": "left lung", "generated": "left lung"},
+    ]
+
+    with open(predictions_path, "w", encoding="utf-8") as f:
+        for row in rows:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+    results = evaluate_predictions(predictions_path)
+    assert results["num_samples"] == 3
+    assert results["num_yes_no"] == 2
+    assert results["exact_match"] == 0.6667
+    assert results["yes_no_accuracy"] == 0.5
 
 
 def test_generate_math_preferences_offline_candidates(temp_dir: Path):

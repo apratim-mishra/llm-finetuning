@@ -7,8 +7,32 @@
 # Model Settings
 model:
   name: "Qwen/Qwen2.5-7B-Instruct"
+  # ==========================================================================
+  # Model Alternatives (uncomment to use)
+  # ==========================================================================
+  # Qwen3 (Latest - Recommended)
+  # name: "Qwen/Qwen3-8B"                # 16GB QLoRA, best quality
+  # name: "Qwen/Qwen3-4B"                # 10GB, fast training
+  # name: "Qwen/Qwen3-14B"               # 24GB QLoRA, higher quality
+  # name: "Qwen/Qwen3-32B"               # 48GB QLoRA / Multi-GPU
+  #
+  # Gemma 3 (Google - Multimodal capable)
+  # name: "google/gemma-3-4b-it"         # 10GB, balanced
+  # name: "google/gemma-3-12b-it"        # 24GB, better quality
+  # name: "google/gemma-3-27b-it"        # 48GB QLoRA, best Gemma
+  #
+  # Llama 3.3 (Meta - Strong baseline)
+  # name: "meta-llama/Llama-3.3-70B-Instruct"  # Multi-GPU required
+  # name: "meta-llama/Llama-3.1-8B-Instruct"   # 16GB QLoRA
+  #
+  # ==========================================================================
+  # VRAM Requirements (QLoRA 4-bit):
+  #   4B models:  ~10GB    | 7-8B models: ~16GB
+  #   12-14B:     ~24GB    | 27-32B:      ~48GB
+  #   70B+:       Multi-GPU (DeepSpeed/FSDP)
+  # ==========================================================================
   torch_dtype: "bfloat16"
-  attn_implementation: "flash_attention_2"  # Requires Ampere+ GPU
+  attn_implementation: "flash_attention_2" # Requires Ampere+ GPU
   device_map: "auto"
   trust_remote_code: true
 
@@ -22,7 +46,7 @@ quantization:
 
 # LoRA Configuration
 lora:
-  r: 64                       # Higher than Mac (32)
+  r: 64 # Higher than Mac (32)
   lora_alpha: 128
   lora_dropout: 0.05
   target_modules: "all-linear"
@@ -35,50 +59,50 @@ training:
   num_train_epochs: 3
   per_device_train_batch_size: 4
   per_device_eval_batch_size: 4
-  gradient_accumulation_steps: 4    # Effective batch: 16
+  gradient_accumulation_steps: 4 # Effective batch: 16
   learning_rate: 2.0e-5
   lr_scheduler_type: "cosine"
   warmup_ratio: 0.03
   weight_decay: 0.01
   max_grad_norm: 1.0
-  
+
   # Precision & Memory
   bf16: true
   gradient_checkpointing: true
   gradient_checkpointing_kwargs:
     use_reentrant: false
-  
+
   # Evaluation
   eval_strategy: "steps"
   eval_steps: 500
-  
+
   # Logging
   logging_steps: 10
   logging_first_step: true
   report_to: "wandb"
-  
+
   # Checkpointing
   save_strategy: "steps"
   save_steps: 500
   save_total_limit: 3
   load_best_model_at_end: true
   metric_for_best_model: "eval_loss"
-  
+
   # Misc
   dataloader_num_workers: 4
   seed: 42
-  
+
 # SFT Trainer Specific
 sft:
   max_seq_length: 2048
-  packing: true               # Pack multiple samples into one sequence
-  dataset_text_field: "text"  # Or use formatting_func
+  packing: true # Pack multiple samples into one sequence
+  dataset_text_field: "text" # Or use formatting_func
 
 # Data
 data:
   train_file: "data/processed/korean_english/train.jsonl"
   val_file: "data/processed/korean_english/val.jsonl"
-  
+
 # Wandb
 wandb:
   project: "korean-translation-gpu"

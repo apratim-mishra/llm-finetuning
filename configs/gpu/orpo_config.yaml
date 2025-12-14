@@ -1,0 +1,81 @@
+# =============================================================================
+# GPU ORPO Configuration - Odds Ratio Preference Optimization
+# Framework: TRL ORPOTrainer
+# Advantage: Combines SFT + preference in one step, no reference model
+# =============================================================================
+
+# Model Settings
+model:
+  name: "Qwen/Qwen3-8B"
+  # ORPO can train from base model (includes SFT component)
+  # adapter: "outputs/gpu/checkpoints/math_sft/final"  # Optional
+  torch_dtype: "bfloat16"
+  attn_implementation: "flash_attention_2"
+  device_map: "auto"
+
+# Quantization
+quantization:
+  enabled: true
+  load_in_4bit: true
+  bnb_4bit_compute_dtype: "bfloat16"
+  bnb_4bit_quant_type: "nf4"
+
+# LoRA
+lora:
+  r: 64
+  lora_alpha: 128
+  lora_dropout: 0.05
+  target_modules: "all-linear"
+  bias: "none"
+
+# ORPO Specific Settings
+orpo:
+  beta: 0.1 # Odds ratio weight (0.05-0.2 typical)
+  max_length: 2048
+  max_prompt_length: 1024
+
+# Training Arguments
+training:
+  output_dir: "outputs/gpu/checkpoints/orpo"
+  num_train_epochs: 1
+  per_device_train_batch_size: 2
+  per_device_eval_batch_size: 2
+  gradient_accumulation_steps: 8
+  learning_rate: 8.0e-6 # Higher than DPO (includes SFT)
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.1
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+
+  # Precision
+  bf16: true
+  gradient_checkpointing: true
+  gradient_checkpointing_kwargs:
+    use_reentrant: false
+
+  # Evaluation
+  eval_strategy: "steps"
+  eval_steps: 100
+
+  # Logging
+  logging_steps: 10
+  report_to: "wandb"
+
+  # Checkpointing
+  save_strategy: "steps"
+  save_steps: 100
+  save_total_limit: 3
+
+  seed: 42
+
+# Data (preference pairs - same format as DPO)
+data:
+  train_file: "data/processed/math/preference_pairs.jsonl"
+  val_file: "data/processed/math/preference_pairs_val.jsonl"
+  # Format: {"prompt": "...", "chosen": "...", "rejected": "..."}
+
+# Wandb
+wandb:
+  project: "math-reasoning-gpu"
+  run_name: "qwen3-8b-orpo-math"
+  tags: ["orpo", "math", "preference"]

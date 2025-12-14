@@ -5,6 +5,7 @@ Merge a PEFT LoRA adapter into a base model and write a standalone HF model dire
 This is useful for:
 - exporting a single deployable artifact (no adapter dependency)
 - preparing models for ONNX/TensorRT-style toolchains
+- merging VLM adapters when the base model is multimodal (best-effort)
 
 Typical usage:
   python scripts/gpu/merge_lora.py \
@@ -22,7 +23,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
@@ -34,21 +35,21 @@ console = Console()
 class MergeConfig:
     adapter_path: Path
     output_dir: Path
-    base_model: Optional[str]
+    base_model: str | None
     dtype: str
     device_map: str
     trust_remote_code: bool
     safe_serialization: bool
     max_shard_size: str
-    offload_folder: Optional[Path]
+    offload_folder: Path | None
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 
-def infer_base_model_from_adapter(adapter_path: Path) -> Optional[str]:
+def infer_base_model_from_adapter(adapter_path: Path) -> str | None:
     adapter_config_path = adapter_path / "adapter_config.json"
     if not adapter_config_path.exists():
         return None
@@ -79,7 +80,7 @@ def resolve_dtype(dtype: str):
 
 def merge_lora(cfg: MergeConfig) -> None:
     from peft import PeftModel
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from transformers import AutoTokenizer
 
     base_model = cfg.base_model or infer_base_model_from_adapter(cfg.adapter_path)
     if not base_model:
@@ -100,7 +101,21 @@ def merge_lora(cfg: MergeConfig) -> None:
         )
     )
 
-    tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=cfg.trust_remote_code)
+    processor = None
+    tokenizer = None
+    try:
+        from transformers import AutoProcessor
+
+        processor = AutoProcessor.from_pretrained(
+            base_model, trust_remote_code=cfg.trust_remote_code
+        )
+    except Exception:
+        processor = None
+
+    if processor is None:
+        tokenizer = AutoTokenizer.from_pretrained(
+            base_model, trust_remote_code=cfg.trust_remote_code
+        )
 
     model_kwargs: dict[str, Any] = {
         "trust_remote_code": cfg.trust_remote_code,
@@ -118,7 +133,17 @@ def merge_lora(cfg: MergeConfig) -> None:
         cfg.offload_folder.mkdir(parents=True, exist_ok=True)
         model_kwargs["offload_folder"] = str(cfg.offload_folder)
 
-    model = AutoModelForCausalLM.from_pretrained(base_model, **model_kwargs)
+    model_family = "causal_lm"
+    try:
+        from transformers import AutoModelForVision2Seq as AutoModel
+
+        model = AutoModel.from_pretrained(base_model, **model_kwargs)
+        model_family = "vision2seq"
+    except Exception:
+        from transformers import AutoModelForCausalLM as AutoModel
+
+        model = AutoModel.from_pretrained(base_model, **model_kwargs)
+
     model = PeftModel.from_pretrained(model, str(cfg.adapter_path))
 
     console.print("[blue]Merging weights (merge_and_unload)...[/blue]")
@@ -130,12 +155,22 @@ def merge_lora(cfg: MergeConfig) -> None:
         safe_serialization=cfg.safe_serialization,
         max_shard_size=cfg.max_shard_size,
     )
-    tokenizer.save_pretrained(str(cfg.output_dir))
+
+    if processor is not None:
+        try:
+            processor.save_pretrained(str(cfg.output_dir))
+        except Exception:
+            pass
+    if tokenizer is not None:
+        tokenizer.save_pretrained(str(cfg.output_dir))
 
     metadata = {
         "base_model": base_model,
         "adapter_path": str(cfg.adapter_path),
         "output_dir": str(cfg.output_dir),
+        "model_family": model_family,
+        "saved_processor": processor is not None,
+        "saved_tokenizer": tokenizer is not None,
         "dtype": cfg.dtype,
         "device_map": cfg.device_map,
         "trust_remote_code": cfg.trust_remote_code,
@@ -149,7 +184,7 @@ def merge_lora(cfg: MergeConfig) -> None:
     console.print("[bold green]Done.[/bold green]")
 
 
-def parse_args(argv: Optional[list[str]] = None) -> MergeConfig:
+def parse_args(argv: list[str] | None = None) -> MergeConfig:
     parser = argparse.ArgumentParser(description="Merge PEFT LoRA adapter into base model")
     parser.add_argument(
         "--adapter",
@@ -241,4 +276,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

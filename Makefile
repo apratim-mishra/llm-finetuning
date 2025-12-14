@@ -2,9 +2,11 @@
 # Makefile - Common commands for LLM Fine-tuning Pipeline
 # =============================================================================
 
-.PHONY: setup-mlx setup-gpu data-translation data-math data-math-preferences train-mlx-translation train-mlx-math \
-        train-gpu-sft-math \
-        eval-mlx eval-translation eval-math train-gpu-sft train-gpu-dpo train-gpu-grpo export-merge-translation export-merge-math export-onnx clean help
+.PHONY: setup-mlx setup-gpu data-translation data-math data-medical-vqa data-math-preferences train-mlx-translation \
+        train-mlx-math train-mlx-medical-vqa \
+        train-gpu-sft-math train-gpu-vlm-medical-vqa \
+        eval-mlx eval-mlx-medical-vqa eval-translation eval-math eval-medical-vqa \
+        train-gpu-sft train-gpu-dpo train-gpu-grpo export-merge-translation export-merge-math export-merge-medical-vqa export-onnx clean help
 
 # Default Python
 PYTHON := python
@@ -45,6 +47,10 @@ data-math:
 	@echo "Preparing math reasoning data..."
 	$(PYTHON) data/scripts/prepare_math_data.py
 
+data-medical-vqa:
+	@echo "Preparing medical VQA (VQA-RAD) data..."
+	$(PYTHON) data/scripts/prepare_medical_vqa_data.py
+
 data-math-preferences:
 	@echo "Generating math preference pairs (DPO)..."
 	$(PYTHON) data/scripts/generate_math_preferences.py \
@@ -57,7 +63,7 @@ data-math-full:
 	@echo "Preparing full math reasoning data..."
 	$(PYTHON) data/scripts/prepare_math_data.py --full
 
-data-all: data-translation data-math
+data-all: data-translation data-math data-medical-vqa
 	@echo "All data prepared!"
 
 # =============================================================================
@@ -71,6 +77,10 @@ train-mlx-translation:
 train-mlx-math:
 	@echo "Training math reasoning model (MLX)..."
 	$(PYTHON) scripts/mlx/train_sft.py --config configs/mlx/sft_math_reasoning.yaml
+
+train-mlx-medical-vqa:
+	@echo "Training medical VQA VLM (MLX)..."
+	$(PYTHON) scripts/mlx/train_vlm_sft.py --config configs/mlx/vlm_medical_vqa.yaml
 
 # =============================================================================
 # MLX Evaluation (Mac)
@@ -86,6 +96,15 @@ eval-mlx-math:
 	$(PYTHON) scripts/mlx/evaluate.py --task math \
 		--adapter outputs/mlx/adapters/math_reasoning
 
+eval-mlx-medical-vqa:
+	@echo "Evaluating medical VQA (MLX-VLM inference + metrics)..."
+	$(PYTHON) scripts/mlx/inference_vlm.py \
+		--model mlx-community/Qwen2-VL-2B-Instruct-4bit \
+		--input data/processed/medical_vqa/test.jsonl \
+		--output outputs/eval/medical_vqa/predictions_mlx.jsonl
+	$(PYTHON) scripts/eval/eval_medical_vqa.py --config configs/evaluation/medical_vqa.yaml \
+		--skip-inference --predictions-file outputs/eval/medical_vqa/predictions_mlx.jsonl
+
 # =============================================================================
 # Evaluation (Task-level)
 # =============================================================================
@@ -97,6 +116,10 @@ eval-translation:
 eval-math:
 	@echo "Evaluating math task (GPU inference + reward metrics)..."
 	$(PYTHON) scripts/eval/eval_math.py --config configs/evaluation/math.yaml
+
+eval-medical-vqa:
+	@echo "Evaluating medical VQA task (GPU VLM inference + metrics)..."
+	$(PYTHON) scripts/eval/eval_medical_vqa.py --config configs/evaluation/medical_vqa.yaml
 
 # =============================================================================
 # GPU Training (Cloud)
@@ -128,6 +151,10 @@ train-gpu-grpo:
 	@echo "Training GRPO model (GPU)..."
 	$(PYTHON) scripts/gpu/train_grpo.py --config configs/gpu/grpo_config.yaml
 
+train-gpu-vlm-medical-vqa:
+	@echo "Training VLM SFT model (GPU, medical VQA)..."
+	$(PYTHON) scripts/gpu/train_vlm_sft.py --config configs/gpu/sft_medical_vqa_vlm.yaml
+
 # Full math pipeline
 train-math-pipeline: train-gpu-sft-math train-gpu-dpo train-gpu-grpo
 	@echo "Math training pipeline complete!"
@@ -147,6 +174,12 @@ export-merge-math:
 	$(PYTHON) scripts/gpu/merge_lora.py \
 		--adapter outputs/gpu/checkpoints/math_grpo/final \
 		--output outputs/gpu/merged_models/math_grpo_merged
+
+export-merge-medical-vqa:
+	@echo "Merging medical VQA LoRA adapter into base VLM..."
+	$(PYTHON) scripts/gpu/merge_lora.py \
+		--adapter outputs/gpu/checkpoints/medical_vqa_sft/final \
+		--output outputs/gpu/merged_models/medical_vqa_sft_merged
 
 export-onnx:
 	@echo "Exporting merged model to ONNX (best-effort)..."
@@ -204,24 +237,29 @@ help:
 	@echo "Data Preparation:"
 	@echo "  make data-translation  - Prepare Korean-English data (subset)"
 	@echo "  make data-math         - Prepare math data (subset)"
+	@echo "  make data-medical-vqa  - Prepare medical VQA-RAD data"
 	@echo "  make data-math-preferences - Generate DPO preference pairs (GPU)"
 	@echo "  make data-all          - Prepare all data"
 	@echo ""
 	@echo "MLX Training (Mac):"
 	@echo "  make train-mlx-translation  - Train translation model"
 	@echo "  make train-mlx-math         - Train math model (SFT only)"
+	@echo "  make train-mlx-medical-vqa  - Train medical VQA VLM (LoRA via mlx-vlm)"
 	@echo ""
 	@echo "MLX Evaluation (Mac):"
 	@echo "  make eval-mlx-translation   - Evaluate translation (BLEU)"
 	@echo "  make eval-mlx-math          - Evaluate math (accuracy)"
+	@echo "  make eval-mlx-medical-vqa   - Evaluate medical VQA (exact match)"
 	@echo ""
 	@echo "Task-level Evaluation:"
 	@echo "  make eval-translation       - GPU inference + translation metrics"
 	@echo "  make eval-math              - GPU inference + math reward metrics"
+	@echo "  make eval-medical-vqa       - GPU VLM inference + VQA metrics"
 	@echo ""
 	@echo "GPU Training (Cloud):"
 	@echo "  make train-gpu-sft          - Train SFT (translation)"
 	@echo "  make train-gpu-sft-math     - Train SFT (math)"
+	@echo "  make train-gpu-vlm-medical-vqa - Train VLM SFT (medical VQA)"
 	@echo "  make train-gpu-sft-deepspeed- Train SFT with DeepSpeed"
 	@echo "  make train-gpu-sft-fsdp     - Train SFT with FSDP"
 	@echo "  make train-gpu-dpo          - Train DPO"
@@ -230,6 +268,7 @@ help:
 	@echo "Export / Packaging:"
 	@echo "  make export-merge-translation - Merge translation LoRA into base"
 	@echo "  make export-merge-math        - Merge math GRPO LoRA into base"
+	@echo "  make export-merge-medical-vqa - Merge medical VQA LoRA into base VLM"
 	@echo "  make export-onnx              - Export merged model to ONNX"
 	@echo ""
 	@echo "Utilities:"

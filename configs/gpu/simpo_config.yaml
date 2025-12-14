@@ -1,0 +1,83 @@
+# =============================================================================
+# GPU SimPO Configuration - Simple Preference Optimization
+# Framework: TRL CPOTrainer with loss_type="simpo"
+# Advantage: No reference model needed, more stable with noisy data
+# =============================================================================
+
+# Model Settings
+model:
+  name: "Qwen/Qwen3-8B"
+  # SimPO can start from base model or SFT checkpoint
+  adapter: "outputs/gpu/checkpoints/math_sft/final" # Optional
+  torch_dtype: "bfloat16"
+  attn_implementation: "flash_attention_2"
+  device_map: "auto"
+
+# Quantization
+quantization:
+  enabled: true
+  load_in_4bit: true
+  bnb_4bit_compute_dtype: "bfloat16"
+  bnb_4bit_quant_type: "nf4"
+
+# LoRA
+lora:
+  r: 64
+  lora_alpha: 128
+  lora_dropout: 0.05
+  target_modules: "all-linear"
+  bias: "none"
+
+# SimPO Specific Settings
+simpo:
+  beta: 2.5 # Higher than DPO (2.0-10.0 typical)
+  simpo_gamma: 0.5 # Target margin ratio (gamma/beta)
+  cpo_alpha: 1.0 # CPO mixing coefficient
+  max_length: 2048
+  max_prompt_length: 1024
+
+# Training Arguments
+training:
+  output_dir: "outputs/gpu/checkpoints/simpo"
+  num_train_epochs: 1
+  per_device_train_batch_size: 2
+  per_device_eval_batch_size: 2
+  gradient_accumulation_steps: 8
+  learning_rate: 5.0e-7 # Similar to DPO
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.1
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+
+  # Precision
+  bf16: true
+  gradient_checkpointing: true
+  gradient_checkpointing_kwargs:
+    use_reentrant: false
+
+  # Evaluation
+  eval_strategy: "steps"
+  eval_steps: 100
+
+  # Logging
+  logging_steps: 10
+  report_to: "wandb"
+
+  # Checkpointing
+  save_strategy: "steps"
+  save_steps: 100
+  save_total_limit: 3
+
+  seed: 42
+
+# Data (preference pairs - same format as DPO)
+data:
+  train_file: "data/processed/math/preference_pairs.jsonl"
+  val_file: "data/processed/math/preference_pairs_val.jsonl"
+  # Format: {"prompt": "...", "chosen": "...", "rejected": "..."}
+
+# Wandb
+wandb:
+  project: "math-reasoning-gpu"
+  run_name: "qwen3-8b-simpo-math"
+  tags: ["simpo", "math", "preference"]

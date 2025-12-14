@@ -12,7 +12,7 @@ echo "Setting up LLM Fine-tuning Project Structure..."
 mkdir -p configs/{mlx,gpu/{deepspeed,fsdp,profiles},evaluation}
 mkdir -p configs/inference
 mkdir -p configs/export
-mkdir -p data/{raw/{korean_english,math},processed/{korean_english,math},scripts}
+mkdir -p data/{raw/{korean_english,math,medical_vqa},processed/{korean_english,math,medical_vqa},scripts}
 mkdir -p src/{data,training,evaluation,rewards,inference}
 mkdir -p scripts/{mlx,gpu,common,eval,export}
 mkdir -p notebooks
@@ -31,8 +31,10 @@ touch src/inference/__init__.py
 # Create placeholder files
 touch data/raw/korean_english/.gitkeep
 touch data/raw/math/.gitkeep
+touch data/raw/medical_vqa/.gitkeep
 touch data/processed/korean_english/.gitkeep
 touch data/processed/math/.gitkeep
+touch data/processed/medical_vqa/.gitkeep
 touch outputs/mlx/checkpoints/.gitkeep
 touch outputs/mlx/adapters/.gitkeep
 touch outputs/mlx/logs/.gitkeep
@@ -50,3 +52,4 @@ echo "Next steps:"
 echo "  1. Run: source setup_env.sh mlx    (for Mac MLX environment)"
 echo "  2. Run: python data/scripts/prepare_translation_data.py"
 echo "  3. Run: python data/scripts/prepare_math_data.py"
+echo "  4. Run: python data/scripts/prepare_medical_vqa_data.py"

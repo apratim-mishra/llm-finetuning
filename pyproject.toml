@@ -60,6 +60,7 @@ dependencies = [
     "pandas>=2.0.0",
     "numpy>=1.24.0",
     "pyarrow>=14.0.0",
+    "pillow>=10.0.0",
 
     # Tokenization
     "tokenizers>=0.15.0",
@@ -95,7 +96,8 @@ dependencies = [
 mlx = [
     "mlx>=0.12.0",
     "mlx-lm>=0.12.0",
-    "transformers>=4.45.0",
+    "mlx-vlm",
+    "transformers>=4.51.3",
     "peft>=0.10.0",
     "accelerate>=0.28.0",
     "trl>=0.12.0",
@@ -104,7 +106,8 @@ mlx = [
 # Cloud GPU Environment (NVIDIA CUDA)
 gpu = [
     "torch>=2.2.0",
-    "transformers>=4.45.0",
+    "torchvision>=0.17.0",
+    "transformers>=4.51.3",
     "accelerate>=0.28.0",
     "peft>=0.10.0",
     "trl>=0.12.0",
@@ -297,3 +300,4 @@ explicit = true
 # Override packages to use CUDA versions when installing GPU deps
 [tool.uv.sources]
 torch = { index = "pytorch-cu121" }
+torchvision = { index = "pytorch-cu121" }

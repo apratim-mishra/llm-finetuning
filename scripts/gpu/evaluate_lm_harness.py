@@ -43,21 +43,57 @@ console = Console()
 
 # Task categories for organized evaluation
 TASK_CATEGORIES = {
-    "math": ["gsm8k", "minerva_math", "math_algebra", "math_geometry"],
-    "reasoning": ["arc_easy", "arc_challenge", "hellaswag", "winogrande", "piqa"],
+    "math": [
+        "gsm8k",
+        "minerva_math",
+        "math_algebra",
+        "math_geometry",
+        "mathqa",           # Multiple choice math
+        "asdiv",            # Diverse math word problems
+    ],
+    "math_advanced": [
+        "hendrycks_math",   # MATH dataset (competition level)
+        "aime_2024",        # American Invitational Math Exam
+        "amc_2023",         # AMC competition problems
+    ],
+    "reasoning": [
+        "arc_easy",
+        "arc_challenge",
+        "hellaswag",
+        "winogrande",
+        "piqa",
+        "boolq",            # Boolean QA
+        "commonsense_qa",   # Commonsense reasoning
+        "logiqa",           # Logical reasoning
+        "siqa",             # Social IQA
+    ],
     "knowledge": ["mmlu", "triviaqa", "naturalqs"],
     "code": ["humaneval", "mbpp"],
-    "translation": [],  # Custom tasks
+    "translation": [],  # Custom tasks via --custom-eval
 }
 
 # Recommended few-shot settings per task
 RECOMMENDED_FEWSHOT = {
+    # Math
     "gsm8k": 8,
+    "mathqa": 5,
+    "asdiv": 5,
+    "hendrycks_math": 4,
+    "aime_2024": 0,
+    "amc_2023": 0,
+    # Reasoning
     "arc_easy": 25,
     "arc_challenge": 25,
     "hellaswag": 10,
     "winogrande": 5,
+    "piqa": 5,
+    "boolq": 0,
+    "commonsense_qa": 7,
+    "logiqa": 0,
+    "siqa": 0,
+    # Knowledge
     "mmlu": 5,
+    # Code
     "humaneval": 0,
     "mbpp": 3,
 }

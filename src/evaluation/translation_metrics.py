@@ -216,6 +216,100 @@ def compute_ter(
         return {"error": str(e)}
 
 
+def compute_bleurt(
+    predictions: List[str],
+    references: List[str],
+    checkpoint: str = "BLEURT-20",
+) -> Dict[str, float]:
+    """
+    Compute BLEURT score (learned metric, correlates well with human judgment).
+
+    Args:
+        predictions: Predicted translations
+        references: Reference translations (flat list)
+        checkpoint: BLEURT checkpoint name
+
+    Returns:
+        Dict with BLEURT score and per-sentence scores
+
+    Note:
+        BLEURT model download is ~2GB on first use.
+        Install with: pip install bleurt @ git+https://github.com/google-research/bleurt.git
+    """
+    try:
+        from bleurt import score as bleurt_score
+
+        logger.info(f"Loading BLEURT checkpoint: {checkpoint}")
+        scorer = bleurt_score.BleurtScorer(checkpoint)
+        scores = scorer.score(references=references, candidates=predictions)
+
+        return {
+            "bleurt": round(sum(scores) / len(scores), 4) if scores else 0.0,
+            "bleurt_scores": [round(s, 4) for s in scores],
+        }
+    except ImportError:
+        logger.warning(
+            "BLEURT not installed. Install with: "
+            "pip install bleurt @ git+https://github.com/google-research/bleurt.git"
+        )
+        return {"error": "bleurt not installed"}
+    except Exception as e:
+        logger.error(f"BLEURT computation failed: {e}")
+        return {"error": str(e)}
+
+
+def compute_xcomet(
+    predictions: List[str],
+    references: List[str],
+    sources: List[str],
+    model_name: str = "Unbabel/XCOMET-XL",
+    batch_size: int = 8,
+    gpus: int = 0,
+) -> Dict[str, float]:
+    """
+    Compute xCOMET score (state-of-the-art neural MT metric).
+    xCOMET is an improved version of COMET with better correlation to human judgment.
+
+    Args:
+        predictions: Predicted translations
+        references: Reference translations (flat list)
+        sources: Source sentences
+        model_name: xCOMET model to use (XCOMET-XL or XCOMET-XXL)
+        batch_size: Batch size for inference
+        gpus: Number of GPUs (0 for CPU)
+
+    Returns:
+        Dict with xCOMET score and per-sentence scores
+
+    Note:
+        xCOMET model download is ~3GB on first use.
+    """
+    try:
+        from comet import download_model, load_from_checkpoint
+
+        logger.info(f"Loading xCOMET model: {model_name}")
+        model_path = download_model(model_name)
+        model = load_from_checkpoint(model_path)
+
+        data = [
+            {"src": src, "mt": pred, "ref": ref}
+            for src, pred, ref in zip(sources, predictions, references)
+        ]
+
+        output = model.predict(data, batch_size=batch_size, gpus=gpus)
+
+        return {
+            "xcomet": round(output.system_score, 4),
+            "xcomet_scores": [round(s, 4) for s in output.scores],
+        }
+    except ImportError:
+        logger.warning("unbabel-comet not installed. Run: pip install unbabel-comet>=2.2")
+        return {"error": "unbabel-comet not installed"}
+    except Exception as e:
+        logger.error(f"xCOMET computation failed: {e}")
+        return {"error": str(e)}
+
+
 def evaluate_translation(
     predictions: List[str],
     references: List[str],
@@ -229,8 +323,9 @@ def evaluate_translation(
     Args:
         predictions: Translated texts
         references: Reference translations
-        sources: Source texts (required for COMET)
+        sources: Source texts (required for COMET, xCOMET)
         metrics: Metrics to compute (default: bleu, chrf)
+            Available: bleu, chrf, ter, comet, xcomet, bleurt
         clean_outputs: Clean predictions before scoring
 
     Returns:
@@ -269,6 +364,17 @@ def evaluate_translation(
             results.update(comet_result)
         else:
             logger.warning("COMET requires source sentences, skipping")
+
+    if "xcomet" in metrics:
+        if sources is not None:
+            xcomet_result = compute_xcomet(predictions, references, sources)
+            results.update(xcomet_result)
+        else:
+            logger.warning("xCOMET requires source sentences, skipping")
+
+    if "bleurt" in metrics:
+        bleurt_result = compute_bleurt(predictions, references)
+        results.update(bleurt_result)
 
     return results
 

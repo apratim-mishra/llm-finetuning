@@ -1,0 +1,37 @@
+# =============================================================================
+# MLX VLM LoRA Configuration - Medical VQA (VQA-RAD)
+#
+# Requires:
+#   pip install -U mlx-vlm
+#
+# NOTE: MLX VLM fine-tuning uses `mlx_vlm.lora` (not `mlx_lm.lora`).
+# =============================================================================
+
+model:
+  # Qwen3-VL for local Mac iteration (requires mlx-vlm >= 0.2.0)
+  name: "mlx-community/Qwen3-VL-4B-Instruct-4bit"
+  # Alternatives (uncomment to use)
+  # name: "mlx-community/Qwen3-VL-8B-Instruct-4bit"  # Higher quality, ~5GB
+  # name: "mlx-community/Qwen2.5-VL-3B-Instruct-4bit"  # Fallback
+  max_seq_length: 2048
+
+lora:
+  rank: 16
+  alpha: 32
+  dropout: 0.05
+  layers: 16
+
+training:
+  iters: 500
+  batch_size: 1
+  learning_rate: 1.0e-4
+  seed: 42
+
+checkpoint:
+  save_every: 100
+  output_dir: "outputs/mlx/adapters/medical_vqa_vlm"
+
+data:
+  train_file: "data/processed/medical_vqa/train.jsonl"
+  val_file: "data/processed/medical_vqa/val.jsonl"
+

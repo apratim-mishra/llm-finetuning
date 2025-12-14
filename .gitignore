@@ -42,6 +42,7 @@ mlx_cache/
 # IDE
 .vscode/
 .idea/
+.cursor/
 *.swp
 *.swo
 *~
