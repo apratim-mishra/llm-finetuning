@@ -113,6 +113,8 @@ def format_prompt(
 @sgl_function
 def generate_response_sgl(s, prompt: str, max_tokens: int = 512, temperature: float = 0.1):
     """SGLang generation function with automatic prefix caching."""
+    if sgl is None:
+        raise RuntimeError("SGLang not installed. Run: pip install sglang[all]")
     s += prompt
     s += sgl.gen("response", max_tokens=max_tokens, temperature=temperature)
 
@@ -120,6 +122,8 @@ def generate_response_sgl(s, prompt: str, max_tokens: int = 512, temperature: fl
 @sgl_function
 def generate_json_response(s, prompt: str, json_schema: dict, max_tokens: int = 512):
     """Generate JSON-constrained response."""
+    if sgl is None:
+        raise RuntimeError("SGLang not installed. Run: pip install sglang[all]")
     s += prompt
     s += sgl.gen("response", max_tokens=max_tokens, regex=json_schema_to_regex(json_schema))
 

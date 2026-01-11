@@ -136,20 +136,17 @@ def run_evaluation(
 ) -> Dict:
     """Run lm-evaluation-harness evaluation."""
     from lm_eval import evaluator
-    from lm_eval.models.huggingface import HFLM
-    from lm_eval.models.vllm_causallms import VLLM
 
     console.print(f"[bold green]Running LM Evaluation[/bold green]")
     console.print(f"  Model: {model_path}")
     console.print(f"  Tasks: {', '.join(tasks)}")
     console.print(f"  Backend: {backend}")
 
-    # Build model arguments
+    # Build model arguments (simple_evaluate creates the model internally)
     if backend == "vllm":
         model_args = f"pretrained={model_path},tensor_parallel_size=1,dtype=auto,gpu_memory_utilization=0.9"
         if adapter_path and Path(adapter_path).exists():
             model_args += f",enable_lora=True,max_lora_rank=64,lora_local_path={adapter_path}"
-        model = VLLM(model_path, batch_size=batch_size)
     else:
         model_args = f"pretrained={model_path},dtype=auto,trust_remote_code=True"
         if adapter_path and Path(adapter_path).exists():
