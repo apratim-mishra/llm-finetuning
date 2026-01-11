@@ -256,6 +256,168 @@ make export-merge-medical-vqa
 make export-onnx
 ```
 
+## Testing Quick Reference
+
+This section provides simple copy-paste commands to test each component of the pipeline.
+
+### Run Unit Tests
+
+```bash
+# Activate environment first
+source setup_env.sh mlx   # or gpu
+
+# Run all tests
+make test
+
+# Run with verbose output
+pytest tests/ -v
+
+# Run specific test file
+pytest tests/test_data_loader.py -v
+pytest tests/test_math_reward.py -v
+pytest tests/test_translation_metrics.py -v
+```
+
+### Test Use Case 1: Korean-English Translation
+
+```bash
+# Step 1: Prepare data (creates data/processed/korean_english/*.jsonl)
+python data/scripts/prepare_translation_data.py
+
+# Step 2: Verify data was created
+ls -la data/processed/korean_english/
+# Expected: train.jsonl, val.jsonl, test.jsonl, manifest.json
+
+# Step 3: Train (Mac MLX - quick test with small iters)
+python scripts/mlx/train_sft.py --config configs/mlx/sft_korean_translation.yaml
+
+# Step 4: Evaluate translation quality
+python scripts/mlx/evaluate.py --task translation \
+    --adapter outputs/mlx/adapters/korean_translation \
+    --max-samples 10
+
+# Step 5: Test inference
+python scripts/gpu/inference_unified.py --backend mlx \
+    --model mlx-community/Qwen2.5-7B-Instruct-4bit \
+    --adapter outputs/mlx/adapters/korean_translation \
+    --interactive
+```
+
+### Test Use Case 2: Math Reasoning
+
+```bash
+# Step 1: Prepare data (creates data/processed/math/*.jsonl)
+python data/scripts/prepare_math_data.py
+
+# Step 2: Verify data was created
+ls -la data/processed/math/
+# Expected: train.jsonl, val.jsonl, test.jsonl, grpo_prompts.jsonl, manifest.json
+
+# Step 3: Train SFT (Mac MLX)
+python scripts/mlx/train_sft.py --config configs/mlx/sft_math_reasoning.yaml
+
+# Step 4: Evaluate math accuracy
+python scripts/mlx/evaluate.py --task math \
+    --adapter outputs/mlx/adapters/math_reasoning \
+    --max-samples 20
+
+# Step 5: Test inference
+python scripts/gpu/inference_unified.py --backend mlx \
+    --model mlx-community/Qwen2.5-7B-Instruct-4bit \
+    --adapter outputs/mlx/adapters/math_reasoning \
+    --interactive
+# Try: "What is 15% of 200?"
+```
+
+### Test Use Case 3: Medical VQA
+
+```bash
+# Step 1: Prepare data (requires VQA-RAD dataset)
+python data/scripts/prepare_medical_vqa_data.py
+
+# Step 2: Verify data was created
+ls -la data/processed/medical_vqa/
+# Expected: train.jsonl, val.jsonl, test.jsonl, images/, manifest.json
+
+# Step 3: Train VLM (Mac MLX with mlx-vlm)
+python scripts/mlx/train_vlm_sft.py --config configs/mlx/vlm_medical_vqa.yaml
+
+# Step 4: Run inference on test images
+python scripts/mlx/inference_vlm.py \
+    --model mlx-community/Qwen2-VL-2B-Instruct-4bit \
+    --input data/processed/medical_vqa/test.jsonl \
+    --output outputs/eval/medical_vqa/predictions_mlx.jsonl
+
+# Step 5: Evaluate predictions
+python scripts/eval/eval_medical_vqa.py \
+    --config configs/evaluation/medical_vqa.yaml \
+    --skip-inference \
+    --predictions-file outputs/eval/medical_vqa/predictions_mlx.jsonl
+```
+
+### Test GPU Training (requires NVIDIA GPU)
+
+```bash
+# Step 1: Setup GPU environment
+source setup_env.sh gpu
+
+# Step 2: Verify GPU is available
+python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}, Device: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else None}')"
+
+# Step 3: Train SFT (translation)
+python scripts/gpu/train_sft.py --config configs/gpu/sft_config.yaml
+
+# Step 4: Train DPO (requires preference data)
+python scripts/gpu/train_dpo.py --config configs/gpu/dpo_config.yaml
+
+# Step 5: Train GRPO (math with rewards)
+python scripts/gpu/train_grpo.py --config configs/gpu/grpo_config.yaml
+
+# Step 6: Run lm-evaluation-harness
+python scripts/gpu/evaluate_lm_harness.py \
+    --model outputs/gpu/checkpoints/sft/final \
+    --tasks gsm8k \
+    --output outputs/eval/results.json
+```
+
+### Test Inference Backends
+
+```bash
+# Test MLX backend (Mac)
+python scripts/gpu/inference_unified.py --backend mlx \
+    --model mlx-community/Qwen2.5-7B-Instruct-4bit --interactive
+
+# Test HuggingFace backend (any platform)
+python scripts/gpu/inference_unified.py --backend hf \
+    --model Qwen/Qwen2.5-7B-Instruct --load-4bit --interactive
+
+# Test vLLM backend (GPU)
+python scripts/gpu/inference_unified.py --backend vllm \
+    --model Qwen/Qwen2.5-7B-Instruct --interactive
+
+# Test batch inference
+echo '{"messages":[{"role":"user","content":"Hello, how are you?"}]}' > /tmp/test.jsonl
+python scripts/gpu/inference_unified.py --backend mlx \
+    --model mlx-community/Qwen2.5-7B-Instruct-4bit \
+    --input /tmp/test.jsonl --output /tmp/output.jsonl
+cat /tmp/output.jsonl
+```
+
+### Verify Everything Works (Smoke Test)
+
+```bash
+# Quick sanity check - runs without GPU/network
+pytest tests/test_pipeline_smoke.py -v
+
+# Check all imports work
+python -c "from src.data.data_loader import load_jsonl; print('data_loader OK')"
+python -c "from src.evaluation.translation_metrics import compute_bleu; print('translation_metrics OK')"
+python -c "from src.rewards.math_reward import get_reward_function; print('math_reward OK')"
+
+# List available make targets
+make help
+```
+
 ## Cloud GPU Credentials (.env)
 
 Only needed if you want your own automation around provisioning/SSH (this repo does not launch AWS/Lambda instances for you). Copy `.env.example` and fill:
