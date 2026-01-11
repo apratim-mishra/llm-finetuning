@@ -176,7 +176,7 @@ def normalize_answer(answer: str) -> float:
         # Remove commas and convert
         clean = answer.replace(",", "").replace("$", "").strip()
         return float(clean)
-    except:
+    except (ValueError, AttributeError):
         return None
 
 

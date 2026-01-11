@@ -390,8 +390,11 @@ def train(config: dict):
 
     console.print("\n[bold]Starting GRPO training...[/bold]")
 
-    # Train
-    train_result = trainer.train()
+    # Train (with optional resume from checkpoint)
+    resume_checkpoint = config.get("training", {}).get("resume_from_checkpoint")
+    if resume_checkpoint:
+        console.print(f"[yellow]Resuming from checkpoint: {resume_checkpoint}[/yellow]")
+    train_result = trainer.train(resume_from_checkpoint=resume_checkpoint)
 
     # Save final model
     final_output_dir = Path(training_args.output_dir) / "final"

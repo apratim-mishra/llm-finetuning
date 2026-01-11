@@ -38,15 +38,26 @@ logger = logging.getLogger(__name__)
 console = Console()
 
 
+# SGLang imports - with fallbacks for when sglang is not installed
+try:
+    import sglang as sgl
+    from sglang import function as sgl_function
+except ImportError:
+    # Create fallback module and decorator when sglang not installed
+    sgl = None
+
+    def sgl_function(f):
+        """Fallback decorator when sglang not installed."""
+        return f
+
+
 def check_sglang_installed():
     """Check if SGLang is installed."""
-    try:
-        import sglang as sgl
-        return True
-    except ImportError:
+    if sgl is None:
         console.print("[red]SGLang not installed. Run: pip install sglang[all][/red]")
         console.print("Or for CUDA 12.1: pip install sglang[all] --find-links https://flashinfer.ai/whl/cu121/torch2.4/flashinfer/")
         return False
+    return True
 
 
 def load_sglang_model(
@@ -57,8 +68,6 @@ def load_sglang_model(
     context_length: Optional[int] = None,
 ):
     """Load model with SGLang Runtime."""
-    import sglang as sgl
-
     console.print(f"[blue]Loading model with SGLang: {model_path}[/blue]")
 
     runtime_kwargs = {
@@ -131,8 +140,6 @@ def batch_inference(
     temperature: float = 0.1,
 ):
     """Run batch inference with SGLang's efficient batching."""
-    import sglang as sgl
-
     console.print(f"[blue]Processing: {input_file}[/blue]")
 
     # Load input data
@@ -391,14 +398,6 @@ Examples:
             sys.exit(1)
     finally:
         runtime.shutdown()
-
-
-# SGLang function decorator placeholder for non-SGLang environments
-try:
-    from sglang import function as sgl_function
-except ImportError:
-    def sgl_function(f):
-        return f
 
 
 if __name__ == "__main__":

@@ -86,6 +86,9 @@ train-mlx-medical-vqa:
 # MLX Evaluation (Mac)
 # =============================================================================
 
+eval-mlx: eval-mlx-translation eval-mlx-math
+	@echo "MLX evaluation complete!"
+
 eval-mlx-translation:
 	@echo "Evaluating translation model (MLX)..."
 	$(PYTHON) scripts/mlx/evaluate.py --task translation \

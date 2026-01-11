@@ -147,23 +147,21 @@ def run_evaluation(
     # Build model arguments
     if backend == "vllm":
         model_args = f"pretrained={model_path},tensor_parallel_size=1,dtype=auto,gpu_memory_utilization=0.9"
-        if adapter_path:
-            model_args += f",enable_lora=True,max_lora_rank=64"
+        if adapter_path and Path(adapter_path).exists():
+            model_args += f",enable_lora=True,max_lora_rank=64,lora_local_path={adapter_path}"
         model = VLLM(model_path, batch_size=batch_size)
     else:
         model_args = f"pretrained={model_path},dtype=auto,trust_remote_code=True"
         if adapter_path and Path(adapter_path).exists():
             model_args += f",peft={adapter_path}"
 
-    # Prepare task-specific few-shot settings
-    task_configs = {}
+    # Display recommended few-shot settings per task (informational only)
+    # Note: simple_evaluate uses a single num_fewshot for all tasks.
+    # For per-task few-shot, use lm_eval.evaluator.evaluate() with TaskConfig.
+    console.print("\n[bold]Recommended few-shot settings (reference):[/bold]")
     for task in tasks:
         shots = num_fewshot if num_fewshot is not None else RECOMMENDED_FEWSHOT.get(task, 0)
-        task_configs[task] = {"num_fewshot": shots}
-
-    console.print("\n[bold]Task configurations:[/bold]")
-    for task, cfg in task_configs.items():
-        console.print(f"  {task}: {cfg['num_fewshot']}-shot")
+        console.print(f"  {task}: {shots}-shot" + (" (using --num-fewshot override)" if num_fewshot is not None else " (recommended)"))
 
     # Run evaluation
     console.print("\n[bold]Starting evaluation...[/bold]")
